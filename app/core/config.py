@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     app_name: str = "Agah Platform API"
     environment: str = "development"
     debug: bool = True
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/agah_platform"
 
 @lru_cache
 def get_settings() -> Settings:
