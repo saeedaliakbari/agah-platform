@@ -76,7 +76,17 @@ async def handle_message(message: dict) -> None:
         elif text == MENU_WALLET:
             await bale_client.send_message(chat_id, "بخش کیف پول (به‌زودی تکمیل می‌شود)")
         elif text == MENU_PROFILE:
-            await bale_client.send_message(chat_id, "بخش پروفایل (به‌زودی تکمیل می‌شود)")
+            profile = await core_api.get_user_profile(from_user.get("id"))
+            if profile:
+                profile_text = (
+                    f"👤 پروفایل شما\n\n"
+                    f"نام: {profile.get('full_name') or 'ثبت نشده'}\n"
+                    f"شماره تماس: {profile.get('phone_number') or 'ثبت نشده'}\n"
+                    f"وضعیت: {'فعال ✅' if profile.get('is_active') else 'غیرفعال ❌'}"
+                )
+                await bale_client.send_message(chat_id, profile_text)
+            else:
+                await bale_client.send_message(chat_id, "پروفایل شما پیدا نشد.")
         elif text == MENU_INVITE:
             await bale_client.send_message(chat_id, "بخش دعوت دوستان (به‌زودی تکمیل می‌شود)")
         elif text == MENU_ORDER_SEARCH:

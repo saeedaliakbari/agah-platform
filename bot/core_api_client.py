@@ -14,5 +14,14 @@ class CoreApiClient:
         response.raise_for_status()
         return response.json()
 
+    
+    async def get_user_profile(self, bale_user_id: int) -> dict | None:
+        response = await self._client.get(f"/api/v1/users/bale/{bale_user_id}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
     async def close(self) -> None:
-        await self._client.aclose()
+            await self._client.aclose()
+    
