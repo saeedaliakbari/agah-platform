@@ -34,9 +34,12 @@ async def handle_update(request: Request) -> dict:
     )
 
     if text == "/start":
-        await bale_client.send_message(
-            chat_id, f"سلام {user.get('full_name') or ''}! خوش اومدی."
-        )
+        try:
+            await bale_client.send_message(
+                chat_id, f"سلام {user.get('full_name') or ''}! خوش اومدی."
+            )
+        except Exception as exc:
+            print(f"Failed to send message to {chat_id}: {exc}")
 
     return {"ok": True}
 
