@@ -1,7 +1,7 @@
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 from app.core.database import Base, get_db
@@ -9,26 +9,24 @@ from app.main import app
 
 settings = get_settings()
 
-test_engine = create_async_engine(settings.test_database_url)
-TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
 
+@pytest_asyncio.fixture
+async def db_session():
+    """برای هر تست یه engine و session تازه می‌سازه (چون هر تست event loop خودشو داره)."""
+    test_engine = create_async_engine(settings.test_database_url, poolclass=NullPool)
 
-@pytest_asyncio.fixture(autouse=True)
-async def setup_database():
-    """قبل از هر تست، جدول‌ها رو از صفر می‌سازه؛ بعدش پاک می‌کنه."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    yield
+    TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
+
+    async with TestSessionLocal() as session:
+        yield session
 
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-
-@pytest_asyncio.fixture
-async def db_session():
-    async with TestSessionLocal() as session:
-        yield session
+    await test_engine.dispose()
 
 
 @pytest_asyncio.fixture
