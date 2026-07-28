@@ -1,11 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.user import UserRead
-from app.services.user_service import get_or_create_bale_user
-from app.core.deps import require_admin
-from app.models.user import User as UserModel
+from app.services.user_service import get_or_create_bale_user, get_user_by_bale_id
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -17,8 +15,18 @@ async def identify_bale_user(
     db: AsyncSession = Depends(get_db),
 ) -> UserRead:
     user = await get_or_create_bale_user(db, bale_user_id, full_name)
-    return user
+    return UserRead.model_validate(user)
 
-@router.get("/me", response_model=UserRead)
-async def read_current_admin(current_user: UserModel = Depends(require_admin)) -> UserRead:
-    return current_user
+
+@router.get("/bale/{bale_user_id}", response_model=UserRead)
+async def get_bale_user_profile(
+    bale_user_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> UserRead:
+    user = await get_user_by_bale_id(db, bale_user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return UserRead.model_validate(user)
