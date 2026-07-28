@@ -12,9 +12,10 @@ router = APIRouter(prefix="/users", tags=["users"])
 async def identify_bale_user(
     bale_user_id: int,
     full_name: str | None = None,
+    bale_username: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> UserRead:
-    user = await get_or_create_bale_user(db, bale_user_id, full_name)
+    user = await get_or_create_bale_user(db, bale_user_id, full_name, bale_username)
     return UserRead.model_validate(user)
 
 

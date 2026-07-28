@@ -11,13 +11,24 @@ async def get_user_by_bale_id(db: AsyncSession, bale_user_id: int) -> User | Non
 
 
 async def get_or_create_bale_user(
-    db: AsyncSession, bale_user_id: int, full_name: str | None
+    db: AsyncSession, bale_user_id: int, full_name: str | None, bale_username: str | None = None
 ) -> User:
+    """Used by the bot / mini-app: find an existing customer or create one on first contact."""
     user = await get_user_by_bale_id(db, bale_user_id)
     if user:
+        # اگه یوزرنیم بله تغییر کرده باشه (کاربر تو بله عوضش کرده)، بروزش می‌کنیم
+        if bale_username and user.bale_username != bale_username:
+            user.bale_username = bale_username
+            await db.commit()
+            await db.refresh(user)
         return user
 
-    user = User(bale_user_id=bale_user_id, full_name=full_name, role=UserRole.CUSTOMER)
+    user = User(
+        bale_user_id=bale_user_id,
+        full_name=full_name,
+        bale_username=bale_username,
+        role=UserRole.CUSTOMER,
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)
