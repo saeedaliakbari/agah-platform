@@ -37,6 +37,9 @@ class WalletTransaction(Base):
         ForeignKey("rejection_reasons.id"), nullable=True
     )
     reviewed_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-
+    
+    withdrawal_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("withdrawal_requests.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
