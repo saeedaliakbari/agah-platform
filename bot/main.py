@@ -130,9 +130,11 @@ async def handle_message(message: dict) -> None:
                 VERIFICATION_CHANNEL_ID, photo_file_id, caption=caption
             )
             channel_file_id = channel_message["result"]["photo"][-1]["file_id"]
+            channel_message_id = channel_message["result"]["message_id"]
 
-            await core_api.submit_verification(from_user.get("id"), channel_file_id)
-
+            await core_api.submit_verification(
+                from_user.get("id"), channel_file_id, channel_message_id
+            )
             await bale_client.send_message(
                 chat_id,
                 f"{EMOJI_SUCCESS} مدرک شما با موفقیت دریافت شد و در حال بررسی است.\n"

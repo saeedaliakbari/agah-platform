@@ -45,3 +45,11 @@ class BaleClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def edit_message_caption(self, chat_id: int, message_id: int, caption: str) -> dict:
+        response = await self._client.post(
+            "/editMessageCaption",
+            json={"chat_id": chat_id, "message_id": message_id, "caption": caption},
+        )
+        response.raise_for_status()
+        return response.json()

@@ -9,10 +9,13 @@ from app.models.verification_request import VerificationRequest, VerificationSta
 
 
 async def create_verification_request(
-    db: AsyncSession, user_id: int, bale_file_id: str
+    db: AsyncSession, user_id: int, bale_file_id: str, bale_channel_message_id: int | None = None
 ) -> VerificationRequest:
     request = VerificationRequest(
-        user_id=user_id, bale_file_id=bale_file_id, status=VerificationStatus.PENDING
+        user_id=user_id,
+        bale_file_id=bale_file_id,
+        bale_channel_message_id=bale_channel_message_id,
+        status=VerificationStatus.PENDING,
     )
     db.add(request)
 

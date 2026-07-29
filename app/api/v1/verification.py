@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.config import get_settings
+from app.services.bale_notification_service import edit_channel_caption, send_bale_message
 from app.core.database import get_db
 from app.core.deps import require_admin
 from app.models.user import User as UserModel
@@ -9,7 +10,6 @@ from app.schemas.verification import (
     RejectionReasonRead,
     VerificationRequestRead,
 )
-from app.services.bale_notification_service import send_bale_message
 from app.services.user_service import get_user_by_bale_id, get_user_by_id
 from app.services.verification_service import (
     approve_verification_request,
@@ -21,7 +21,7 @@ from app.services.verification_service import (
     reject_verification_request,
     update_rejection_reason,
 )
-
+settings = get_settings()
 router = APIRouter(prefix="/verification", tags=["verification"])
 
 
@@ -29,15 +29,17 @@ router = APIRouter(prefix="/verification", tags=["verification"])
 async def submit_verification(
     bale_user_id: int,
     bale_file_id: str,
+    bale_channel_message_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> VerificationRequestRead:
     user = await get_user_by_bale_id(db, bale_user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    request = await create_verification_request(db, user.id, bale_file_id)
+    request = await create_verification_request(
+        db, user.id, bale_file_id, bale_channel_message_id
+    )
     return VerificationRequestRead.model_validate(request)
-
 
 @router.get("/pending", response_model=list[VerificationRequestRead])
 async def list_pending_verifications(
@@ -65,6 +67,19 @@ async def approve_verification(
             "✅ احراز هویت شما با موفقیت تایید شد.",
         )
 
+    if request.bale_channel_message_id:
+        caption = (
+            f"🪪 درخواست احراز هویت\n\n"
+            f"👤 نام: {user.full_name if user else 'نامشخص'}\n"
+            f"🔖 یوزرنیم: @{user.bale_username if user and user.bale_username else 'ثبت نشده'}\n"
+            f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
+            f"📞 شماره تماس: {user.phone_number if user and user.phone_number else 'ثبت نشده'}\n"
+            f"📋 وضعیت: تایید شد ✅"
+        )
+        await edit_channel_caption(
+            settings.verification_channel_id, request.bale_channel_message_id, caption
+        )
+
     return VerificationRequestRead.model_validate(request)
 
 
@@ -80,18 +95,32 @@ async def reject_verification(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
 
     user = await get_user_by_id(db, request.user_id)
+    reasons = await get_active_rejection_reasons(db)
+    reason_text = next(
+        (r.text for r in reasons if r.id == rejection_reason_id), "دلیل نامشخص"
+    )
+
     if user and user.bale_user_id:
-        reasons = await get_active_rejection_reasons(db)
-        reason_text = next(
-            (r.text for r in reasons if r.id == rejection_reason_id), "دلیل نامشخص"
-        )
         await send_bale_message(
             user.bale_user_id,
             f"❌ احراز هویت شما رد شد.\nدلیل: {reason_text}\n\nلطفاً مجدداً مدرک خود را ارسال کنید.",
         )
 
-    return VerificationRequestRead.model_validate(request)
+    if request.bale_channel_message_id:
+        caption = (
+            f"🪪 درخواست احراز هویت\n\n"
+            f"👤 نام: {user.full_name if user else 'نامشخص'}\n"
+            f"🔖 یوزرنیم: @{user.bale_username if user and user.bale_username else 'ثبت نشده'}\n"
+            f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
+            f"📞 شماره تماس: {user.phone_number if user and user.phone_number else 'ثبت نشده'}\n"
+            f"📋 وضعیت: رد شد ❌\n"
+            f"دلیل: {reason_text}"
+        )
+        await edit_channel_caption(
+            settings.verification_channel_id, request.bale_channel_message_id, caption
+        )
 
+    return VerificationRequestRead.model_validate(request)
 
 @router.post("/rejection-reasons", response_model=RejectionReasonRead)
 async def create_reason(

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24
     test_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/agah_platform_test"
     bale_bot_token: str = ""
+    verification_channel_id: int = 0
     
 @lru_cache
 def get_settings() -> Settings:
