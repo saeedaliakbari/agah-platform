@@ -27,7 +27,11 @@ MENU_INVITE = "🤝 دعوت دوستان"
 MENU_ORDER_SEARCH = "🔍 جستجوی سفارش"
 MENU_MORE = "⚙️ گزینه‌های بیشتر"
 MENU_BACK = "🔙 بازگشت"
-
+EMOJI_CALENDAR = "📅"
+EMOJI_ID = "🆔"
+EMOJI_USERNAME = "🔖"
+EMOJI_NAME = "👤"
+EMOJI_PHONE = "📞"
 
 def main_menu_keyboard() -> dict:
     """چیدمان دکمه‌های منوی اصلی (Reply Keyboard - پایین صفحه)."""
@@ -54,9 +58,19 @@ async def handle_update(request: Request) -> dict:
     return {"ok": True}
 
 def mask_phone(phone: str | None) -> str:
-    if not phone or len(phone) < 8:
+    if not phone:
         return "ثبت نشده"
-    return f"{phone[:4]}***{phone[-4:]}"
+
+    normalized = phone
+    if normalized.startswith("98"):
+        normalized = "0" + normalized[2:]
+    elif normalized.startswith("+98"):
+        normalized = "0" + normalized[3:]
+
+    if len(normalized) < 8:
+        return "ثبت نشده"
+
+    return f"{normalized[-4:]}***{normalized[:4]}"
 
 
 def format_join_date(created_at_str: str) -> str:
@@ -137,11 +151,11 @@ async def handle_message(message: dict) -> None:
             profile = await core_api.get_user_profile(from_user.get("id"))
             if profile:
                 profile_text = (
-                    f"تاریخ عضویت: {format_join_date(profile['created_at'])}\n\n"
-                    f"شناسه من: {profile.get('bale_user_id')}\n"
-                    f"یوزرنیم: @{profile.get('bale_username') or 'ثبت نشده'}\n"
-                    f"نام و نام خانوادگی: {profile.get('full_name') or 'ثبت نشده'}\n"
-                    f"شماره موبایل: {mask_phone(profile.get('phone_number'))}"
+                    f"{EMOJI_CALENDAR} تاریخ عضویت: {format_join_date(profile['created_at'])}\n\n"
+                    f"{EMOJI_ID} شناسه من: {profile.get('bale_user_id')}\n"
+                    f"{EMOJI_USERNAME} یوزرنیم: @{profile.get('bale_username') or 'ثبت نشده'}\n"
+                    f"{EMOJI_NAME} نام و نام خانوادگی: {profile.get('full_name') or 'ثبت نشده'}\n"
+                    f"{EMOJI_PHONE} شماره موبایل: {mask_phone(profile.get('phone_number'))}"
                 )
                 await bale_client.send_message(
                     chat_id, profile_text, reply_markup=profile_submenu_keyboard()
