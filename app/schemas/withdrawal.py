@@ -1,8 +1,8 @@
 from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict
 
 from app.models.withdrawal_request import WithdrawalStatus
+from app.schemas.bank_account import BankAccountRead
 
 
 class WithdrawalRequestCreate(BaseModel):
