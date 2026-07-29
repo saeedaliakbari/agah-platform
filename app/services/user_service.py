@@ -53,3 +53,13 @@ async def create_admin_user(db: AsyncSession, username: str, password: str) -> U
 async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()
+
+async def update_phone_number(db: AsyncSession, bale_user_id: int, phone_number: str) -> User | None:
+    user = await get_user_by_bale_id(db, bale_user_id)
+    if not user:
+        return None
+
+    user.phone_number = phone_number
+    await db.commit()
+    await db.refresh(user)
+    return user
