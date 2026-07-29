@@ -57,6 +57,57 @@ TRANSACTION_STATUS_FA = {
     "rejected": "رد شده ❌",
 }
 
+def format_transaction_datetime(created_at_str: str) -> str:
+    created_at = datetime.fromisoformat(created_at_str)
+    jalali_date = jdatetime.datetime.fromgregorian(datetime=created_at)
+    return jalali_date.strftime("%Y/%m/%d - %H:%M")
+
+
+def format_transaction(t: dict) -> str:
+    type_label = TRANSACTION_TYPE_FA.get(t["type"], t["type"])
+    status_label = TRANSACTION_STATUS_FA.get(t["status"], t["status"])
+
+    lines = [
+        f"{EMOJI_RECEIPT} نوع: {type_label}",
+        f"💵 مبلغ: {t['amount']:,.0f} تومان",
+        f"{EMOJI_CALENDAR} تاریخ: {format_transaction_datetime(t['created_at'])}",
+        f"{EMOJI_STATUS} وضعیت: {status_label}",
+    ]
+
+    if t.get("transfer_method"):
+        lines.append(f"💳 روش انتقال: {t['transfer_method']}")
+
+    if t["status"] == "rejected" and t.get("rejection_reason_text"):
+        lines.append(f"دلیل رد: {t['rejection_reason_text']}")
+
+    return "\n".join(lines)
+
+def format_join_date(created_at_str: str) -> str:
+    created_at = datetime.fromisoformat(created_at_str)
+    jalali_date = jdatetime.datetime.fromgregorian(datetime=created_at)
+    days_since = (datetime.now(timezone.utc) - created_at).days
+    return f"{jalali_date.strftime('%Y/%m/%d')} ( {days_since} روز )"
+
+def format_datetime(datetime_str: str) -> str:
+    dt = datetime.fromisoformat(datetime_str)
+    jalali_dt = jdatetime.datetime.fromgregorian(datetime=dt)
+    return jalali_dt.strftime("%Y/%m/%d - %H:%M")
+
+def profile_submenu_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": "✏️ ویرایش پروفایل"}, {"text": "🔙 بازگشت"}],
+        ],
+        "resize_keyboard": True,
+    }
+
+def request_contact_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": "📱 ارسال شماره تماس", "request_contact": True}],
+        ],
+        "resize_keyboard": True,
+    }
 def main_menu_keyboard() -> dict:
     """چیدمان دکمه‌های منوی اصلی (Reply Keyboard - پایین صفحه)."""
     return {
@@ -113,55 +164,32 @@ def mask_phone(phone: str | None) -> str:
     return f"{normalized[-4:]}***{normalized[:4]}"
 
 
-def format_join_date(created_at_str: str) -> str:
-    created_at = datetime.fromisoformat(created_at_str)
-    jalali_date = jdatetime.datetime.fromgregorian(datetime=created_at)
-    days_since = (datetime.now(timezone.utc) - created_at).days
-    return f"{jalali_date.strftime('%Y/%m/%d')} ( {days_since} روز )"
 
-def format_datetime(datetime_str: str) -> str:
-    dt = datetime.fromisoformat(datetime_str)
-    jalali_dt = jdatetime.datetime.fromgregorian(datetime=dt)
-    return jalali_dt.strftime("%Y/%m/%d - %H:%M")
-
-def profile_submenu_keyboard() -> dict:
-    return {
-        "keyboard": [
-            [{"text": "✏️ ویرایش پروفایل"}, {"text": "🔙 بازگشت"}],
-        ],
-        "resize_keyboard": True,
-    }
-
-def request_contact_keyboard() -> dict:
-    return {
-        "keyboard": [
-            [{"text": "📱 ارسال شماره تماس", "request_contact": True}],
-        ],
-        "resize_keyboard": True,
-    }
 
 
 async def handle_message(message: dict) -> None:
     chat_id = message["chat"]["id"]
     from_user = message.get("from", {})
     text = message.get("text", "")
+    user_id = from_user.get("id")
 
     user = await core_api.identify_user(
-        bale_user_id=from_user.get("id"),
+        bale_user_id=user_id,
         full_name=from_user.get("first_name"),
         bale_username=from_user.get("username"),
     )
 
     try:
+        state = user_states.get(user_id)
+
         if "photo" in message:
             photo_file_id = message["photo"][-1]["file_id"]
-            state = user_states.get(from_user.get("id"))
 
             if state and state.get("step") == "awaiting_receipt":
                 caption = (
                     f"💰 درخواست شارژ کیف پول\n\n"
                     f"{EMOJI_NAME} نام: {user.get('full_name') or 'نامشخص'}\n"
-                    f"{EMOJI_ID} آیدی بله: {from_user.get('id')}\n"
+                    f"{EMOJI_ID} آیدی بله: {user_id}\n"
                     f"💳 روش انتقال: {state['transfer_method']}\n"
                     f"💵 مبلغ: {state['amount']:,.0f} تومان\n"
                     f"{EMOJI_STATUS} وضعیت: در انتظار بررسی ⏳"
@@ -173,14 +201,14 @@ async def handle_message(message: dict) -> None:
                 channel_message_id = channel_message["result"]["message_id"]
 
                 await core_api.submit_deposit(
-                    from_user.get("id"),
+                    user_id,
                     state["amount"],
                     channel_file_id,
                     state["transfer_method"],
                     channel_message_id,
                 )
 
-                del user_states[from_user.get("id")]
+                del user_states[user_id]
 
                 await bale_client.send_message(
                     chat_id,
@@ -188,12 +216,11 @@ async def handle_message(message: dict) -> None:
                     reply_markup=wallet_submenu_keyboard(),
                 )
             else:
-                # جریان احراز هویت (کد قبلی)
                 caption = (
                     f"{EMOJI_DOCUMENT} درخواست احراز هویت جدید\n\n"
                     f"{EMOJI_NAME} نام: {user.get('full_name') or 'نامشخص'}\n"
                     f"{EMOJI_USERNAME_TAG} یوزرنیم: @{user.get('bale_username') or 'ثبت نشده'}\n"
-                    f"{EMOJI_ID} آیدی بله: {from_user.get('id')}\n"
+                    f"{EMOJI_ID} آیدی بله: {user_id}\n"
                     f"{EMOJI_PHONE} شماره تماس: {user.get('phone_number') or 'ثبت نشده'}\n"
                     f"{EMOJI_STATUS} وضعیت: در انتظار بررسی ⏳"
                 )
@@ -203,25 +230,25 @@ async def handle_message(message: dict) -> None:
                 channel_file_id = channel_message["result"]["photo"][-1]["file_id"]
                 channel_message_id = channel_message["result"]["message_id"]
 
-                await core_api.submit_verification(
-                    from_user.get("id"), channel_file_id, channel_message_id
-                )
+                await core_api.submit_verification(user_id, channel_file_id, channel_message_id)
 
                 await bale_client.send_message(
                     chat_id,
                     f"{EMOJI_SUCCESS} مدرک شما با موفقیت دریافت شد و در حال بررسی است.\n"
                     f"⏳ نتیجه به‌زودی به شما اطلاع داده خواهد شد.",
                 )
+
         elif "contact" in message:
             contact = message["contact"]
-            await core_api.update_phone_number(from_user.get("id"), contact["phone_number"])
+            await core_api.update_phone_number(user_id, contact["phone_number"])
             await bale_client.send_message(
                 chat_id,
                 "شماره تماس شما با موفقیت ثبت شد ✅",
                 reply_markup=main_menu_keyboard(),
             )
-        if text == "/start":
-            profile = await core_api.get_user_profile(from_user.get("id"))
+
+        elif text == "/start":
+            profile = await core_api.get_user_profile(user_id)
             if profile and not profile.get("phone_number"):
                 await bale_client.send_message(
                     chat_id,
@@ -234,10 +261,14 @@ async def handle_message(message: dict) -> None:
                     f"سلام {user.get('full_name') or ''}! یکی از گزینه‌های زیر رو انتخاب کن:",
                     reply_markup=main_menu_keyboard(),
                 )
-        elif from_user.get("id") in user_states:
-            state = user_states[from_user.get("id")]
 
-            if state["step"] == "awaiting_amount":
+        elif state is not None:
+            if text == "🔙 بازگشت":
+                del user_states[user_id]
+                await bale_client.send_message(
+                    chat_id, "به منوی کیف پول برگشتی:", reply_markup=wallet_submenu_keyboard()
+                )
+            elif state["step"] == "awaiting_amount":
                 try:
                     amount = float(text.replace(",", "").strip())
                     if amount <= 0:
@@ -250,19 +281,14 @@ async def handle_message(message: dict) -> None:
                     await bale_client.send_message(
                         chat_id, "روش انتقال را انتخاب کنید:", reply_markup=transfer_method_keyboard()
                     )
-
             elif state["step"] == "awaiting_transfer_method":
                 if text in ("پایا", "پل", "کارت به کارت", "حساب به حساب"):
                     state["transfer_method"] = text
                     state["step"] = "awaiting_receipt"
                     await bale_client.send_message(chat_id, "لطفاً تصویر رسید واریز را ارسال کنید:")
-                elif text == "🔙 بازگشت":
-                    del user_states[from_user.get("id")]
-                    await bale_client.send_message(
-                        chat_id, "به منوی کیف پول برگشتی:", reply_markup=wallet_submenu_keyboard()
-                    )
                 else:
                     await bale_client.send_message(chat_id, "لطفاً یکی از روش‌های موجود را انتخاب کنید.")
+
         elif text == MENU_LOANS:
             await bale_client.send_message(chat_id, "بخش وام‌های بانکی (به‌زودی تکمیل می‌شود)")
         elif text == MENU_CLUB_SERVICES:
@@ -270,48 +296,24 @@ async def handle_message(message: dict) -> None:
         elif text == MENU_STOCKS:
             await bale_client.send_message(chat_id, "بخش معرفی سهام (به‌زودی تکمیل می‌شود)")
         elif text == MENU_WALLET:
-            balance_data = await core_api.get_balance(from_user.get("id"))
+            balance_data = await core_api.get_balance(user_id)
             await bale_client.send_message(
                 chat_id,
                 f"{EMOJI_MONEY} موجودی کیف پول شما: {balance_data['balance']:,.0f} تومان",
                 reply_markup=wallet_submenu_keyboard(),
             )
         elif text == MENU_DEPOSIT:
-            user_states[from_user.get("id")] = {"step": "awaiting_amount"}
+            user_states[user_id] = {"step": "awaiting_amount"}
             await bale_client.send_message(chat_id, "لطفاً مبلغ واریزی خود را به تومان وارد کنید:")
-
         elif text == MENU_TRANSACTIONS:
-            transactions = await core_api.get_transactions(from_user.get("id"))
+            transactions = await core_api.get_transactions(user_id)
             if not transactions:
                 await bale_client.send_message(chat_id, "هنوز تراکنشی ثبت نشده است.")
             else:
-                messages = []
                 for t in transactions[:10]:
-                    type_fa = TRANSACTION_TYPE_FA.get(t["type"], t["type"])
-                    status_fa = TRANSACTION_STATUS_FA.get(t["status"], t["status"])
-
-                    lines = [
-                        f"{EMOJI_RECEIPT} {type_fa}",
-                        f"{EMOJI_CALENDAR} تاریخ: {format_datetime(t['created_at'])}",
-                        f"💵 مبلغ: {t['amount']:,.0f} تومان",
-                        f"{EMOJI_STATUS} وضعیت: {status_fa}",
-                    ]
-
-                    if t.get("transfer_method"):
-                        lines.append(f"💳 روش انتقال: {t['transfer_method']}")
-
-                    if t["status"] == "rejected" and t.get("rejection_reason_text"):
-                        lines.append(f"📝 دلیل رد: {t['rejection_reason_text']}")
-
-                    if t.get("reviewed_at"):
-                        lines.append(f"🕓 زمان بررسی: {format_datetime(t['reviewed_at'])}")
-
-                    messages.append("\n".join(lines))
-
-                full_text = "\n\n➖➖➖➖➖\n\n".join(messages)
-                await bale_client.send_message(chat_id, full_text)
+                    await bale_client.send_message(chat_id, format_transaction(t))
         elif text == MENU_PROFILE:
-            profile = await core_api.get_user_profile(from_user.get("id"))
+            profile = await core_api.get_user_profile(user_id)
             if profile:
                 profile_text = (
                     f"{EMOJI_CALENDAR} تاریخ عضویت: {format_join_date(profile['created_at'])}\n\n"
@@ -325,7 +327,6 @@ async def handle_message(message: dict) -> None:
                 )
             else:
                 await bale_client.send_message(chat_id, "پروفایل شما پیدا نشد.")
-        
         elif text == MENU_INVITE:
             await bale_client.send_message(chat_id, "بخش دعوت دوستان (به‌زودی تکمیل می‌شود)")
         elif text == MENU_ORDER_SEARCH:
@@ -337,8 +338,7 @@ async def handle_message(message: dict) -> None:
                 chat_id, "به منوی اصلی برگشتی:", reply_markup=main_menu_keyboard()
             )
     except Exception as exc:
-       print(f"Failed to send message to {chat_id}: {type(exc).__name__}: {exc!r}")
-
+        print(f"Failed to send message to {chat_id}: {type(exc).__name__}: {exc!r}")
 
 async def handle_callback_query(callback_query: dict) -> None:
     callback_id = callback_query["id"]
