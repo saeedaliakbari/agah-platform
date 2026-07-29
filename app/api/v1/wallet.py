@@ -26,6 +26,7 @@ async def submit_deposit(
     bale_user_id: int,
     amount: float,
     receipt_bale_file_id: str,
+    transfer_method: str | None = None,
     bale_channel_message_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> WalletTransactionRead:
@@ -34,7 +35,7 @@ async def submit_deposit(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     transaction = await create_deposit_request(
-        db, user.id, amount, receipt_bale_file_id, bale_channel_message_id
+        db, user.id, amount, receipt_bale_file_id, transfer_method, bale_channel_message_id
     )
     return WalletTransactionRead.model_validate(transaction)
 
@@ -93,8 +94,9 @@ async def approve_deposit(
             f"💰 درخواست شارژ کیف پول\n\n"
             f"👤 نام: {user.full_name if user else 'نامشخص'}\n"
             f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
+            f"💳 روش انتقال: {transaction.transfer_method or 'نامشخص'}\n"
             f"💵 مبلغ: {transaction.amount:,.0f} تومان\n"
-            f"📋 وضعیت: تایید شد ✅"
+            f"📋 وضعیت: تایید شد ✅"  # یا "رد شد ❌" برای تابع reject
         )
         await edit_channel_caption(
             settings.wallet_channel_id, transaction.bale_channel_message_id, caption
@@ -132,9 +134,9 @@ async def reject_deposit(
             f"💰 درخواست شارژ کیف پول\n\n"
             f"👤 نام: {user.full_name if user else 'نامشخص'}\n"
             f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
+            f"💳 روش انتقال: {transaction.transfer_method or 'نامشخص'}\n"
             f"💵 مبلغ: {transaction.amount:,.0f} تومان\n"
-            f"📋 وضعیت: رد شد ❌\n"
-            f"دلیل: {reason_text}"
+            f"📋 وضعیت: تایید شد ✅"  # یا "رد شد ❌" برای تابع reject
         )
         await edit_channel_caption(
             settings.wallet_channel_id, transaction.bale_channel_message_id, caption

@@ -29,7 +29,7 @@ class WalletTransaction(Base):
     status: Mapped[TransactionStatus] = mapped_column(
         Enum(TransactionStatus), default=TransactionStatus.PENDING
     )
-
+    transfer_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
     receipt_bale_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bale_channel_message_id: Mapped[int | None] = mapped_column(nullable=True)
 

@@ -12,6 +12,7 @@ class WalletTransactionRead(BaseModel):
     user_id: int
     type: TransactionType
     amount: float
+    transfer_method: str | None
     status: TransactionStatus
     rejection_reason_id: int | None
     created_at: datetime

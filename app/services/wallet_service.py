@@ -12,6 +12,7 @@ async def create_deposit_request(
     user_id: int,
     amount: float,
     receipt_bale_file_id: str,
+    transfer_method: str | None = None,
     bale_channel_message_id: int | None = None,
 ) -> WalletTransaction:
     transaction = WalletTransaction(
@@ -19,6 +20,7 @@ async def create_deposit_request(
         type=TransactionType.DEPOSIT,
         amount=amount,
         receipt_bale_file_id=receipt_bale_file_id,
+        transfer_method=transfer_method,
         bale_channel_message_id=bale_channel_message_id,
         status=TransactionStatus.PENDING,
     )
