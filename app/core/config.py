@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
     test_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/agah_platform_test"
+    bale_bot_token: str = ""
     
 @lru_cache
 def get_settings() -> Settings:

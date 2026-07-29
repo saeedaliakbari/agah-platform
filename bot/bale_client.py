@@ -29,3 +29,19 @@ class BaleClient:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    async def forward_message(self, chat_id: int, from_chat_id: int, message_id: int) -> dict:
+        response = await self._client.post(
+            "/forwardMessage",
+            json={"chat_id": chat_id, "from_chat_id": from_chat_id, "message_id": message_id},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def send_photo(self, chat_id: int, photo_file_id: str, caption: str = "") -> dict:
+        response = await self._client.post(
+            "/sendPhoto",
+            json={"chat_id": chat_id, "photo": photo_file_id, "caption": caption},
+        )
+        response.raise_for_status()
+        return response.json()

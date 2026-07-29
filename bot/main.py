@@ -13,6 +13,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BALE_BOT_TOKEN", "")
 CORE_API_URL = os.getenv("CORE_API_URL", "http://localhost:8000")
+VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID", "0"))
 
 app = FastAPI(title="Agah Bot Webhook")
 bale_client = BaleClient(token=BOT_TOKEN)
@@ -32,6 +33,10 @@ EMOJI_ID = "🆔"
 EMOJI_USERNAME = "🔖"
 EMOJI_NAME = "👤"
 EMOJI_PHONE = "📞"
+EMOJI_USERNAME_TAG = "🔖"
+EMOJI_STATUS = "📋"
+EMOJI_DOCUMENT = "🪪"
+EMOJI_SUCCESS = "✅"
 
 def main_menu_keyboard() -> dict:
     """چیدمان دکمه‌های منوی اصلی (Reply Keyboard - پایین صفحه)."""
@@ -109,7 +114,31 @@ async def handle_message(message: dict) -> None:
     )
 
     try:
-        if "contact" in message:
+        if "photo" in message:
+            photo_file_id = message["photo"][-1]["file_id"]
+
+            caption = (
+                f"{EMOJI_DOCUMENT} درخواست احراز هویت جدید\n\n"
+                f"{EMOJI_NAME} نام: {user.get('full_name') or 'نامشخص'}\n"
+                f"{EMOJI_USERNAME_TAG} یوزرنیم: @{user.get('bale_username') or 'ثبت نشده'}\n"
+                f"{EMOJI_ID} آیدی بله: {from_user.get('id')}\n"
+                f"{EMOJI_PHONE} شماره تماس: {user.get('phone_number') or 'ثبت نشده'}\n"
+                f"{EMOJI_STATUS} وضعیت: در انتظار بررسی ⏳"
+            )
+
+            channel_message = await bale_client.send_photo(
+                VERIFICATION_CHANNEL_ID, photo_file_id, caption=caption
+            )
+            channel_file_id = channel_message["result"]["photo"][-1]["file_id"]
+
+            await core_api.submit_verification(from_user.get("id"), channel_file_id)
+
+            await bale_client.send_message(
+                chat_id,
+                f"{EMOJI_SUCCESS} مدرک شما با موفقیت دریافت شد و در حال بررسی است.\n"
+                f"⏳ نتیجه به‌زودی به شما اطلاع داده خواهد شد.",
+            )
+        elif "contact" in message:
             contact = message["contact"]
             await core_api.update_phone_number(from_user.get("id"), contact["phone_number"])
             await bale_client.send_message(

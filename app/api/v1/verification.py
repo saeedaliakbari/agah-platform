@@ -9,7 +9,8 @@ from app.schemas.verification import (
     RejectionReasonRead,
     VerificationRequestRead,
 )
-from app.services.user_service import get_user_by_bale_id
+from app.services.bale_notification_service import send_bale_message
+from app.services.user_service import get_user_by_bale_id, get_user_by_id
 from app.services.verification_service import (
     approve_verification_request,
     create_rejection_reason,
@@ -56,6 +57,14 @@ async def approve_verification(
     request = await approve_verification_request(db, request_id, admin.id)
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    user = await get_user_by_id(db, request.user_id)
+    if user and user.bale_user_id:
+        await send_bale_message(
+            user.bale_user_id,
+            "✅ احراز هویت شما با موفقیت تایید شد.",
+        )
+
     return VerificationRequestRead.model_validate(request)
 
 
@@ -69,6 +78,18 @@ async def reject_verification(
     request = await reject_verification_request(db, request_id, admin.id, rejection_reason_id)
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    user = await get_user_by_id(db, request.user_id)
+    if user and user.bale_user_id:
+        reasons = await get_active_rejection_reasons(db)
+        reason_text = next(
+            (r.text for r in reasons if r.id == rejection_reason_id), "دلیل نامشخص"
+        )
+        await send_bale_message(
+            user.bale_user_id,
+            f"❌ احراز هویت شما رد شد.\nدلیل: {reason_text}\n\nلطفاً مجدداً مدرک خود را ارسال کنید.",
+        )
+
     return VerificationRequestRead.model_validate(request)
 
 

@@ -38,3 +38,11 @@ class CoreApiClient:
         )
         response.raise_for_status()
         return response.json()
+        
+    async def submit_verification(self, bale_user_id: int, bale_file_id: str) -> dict:
+        response = await self._client.post(
+            "/api/v1/verification/submit",
+            params={"bale_user_id": bale_user_id, "bale_file_id": bale_file_id},
+        )
+        response.raise_for_status()
+        return response.json()
