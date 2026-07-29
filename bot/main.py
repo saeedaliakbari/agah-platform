@@ -6,6 +6,9 @@ from fastapi import FastAPI, Request
 from bale_client import BaleClient
 from core_api_client import CoreApiClient
 
+from datetime import datetime, timezone
+import jdatetime
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BALE_BOT_TOKEN", "")
@@ -23,6 +26,7 @@ MENU_PROFILE = "👤 پروفایل"
 MENU_INVITE = "🤝 دعوت دوستان"
 MENU_ORDER_SEARCH = "🔍 جستجوی سفارش"
 MENU_MORE = "⚙️ گزینه‌های بیشتر"
+MENU_BACK = "🔙 بازگشت"
 
 
 def main_menu_keyboard() -> dict:
@@ -49,6 +53,35 @@ async def handle_update(request: Request) -> dict:
 
     return {"ok": True}
 
+def mask_phone(phone: str | None) -> str:
+    if not phone or len(phone) < 8:
+        return "ثبت نشده"
+    return f"{phone[:4]}***{phone[-4:]}"
+
+
+def format_join_date(created_at_str: str) -> str:
+    created_at = datetime.fromisoformat(created_at_str)
+    jalali_date = jdatetime.datetime.fromgregorian(datetime=created_at)
+    days_since = (datetime.now(timezone.utc) - created_at).days
+    return f"{jalali_date.strftime('%Y/%m/%d')} ( {days_since} روز )"
+
+
+def profile_submenu_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": "✏️ ویرایش پروفایل"}, {"text": "🔙 بازگشت"}],
+        ],
+        "resize_keyboard": True,
+    }
+
+def request_contact_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": "📱 ارسال شماره تماس", "request_contact": True}],
+        ],
+        "resize_keyboard": True,
+    }
+
 
 async def handle_message(message: dict) -> None:
     chat_id = message["chat"]["id"]
@@ -58,13 +91,38 @@ async def handle_message(message: dict) -> None:
     user = await core_api.identify_user(
         bale_user_id=from_user.get("id"),
         full_name=from_user.get("first_name"),
+        bale_username=from_user.get("username"),
     )
 
     try:
-        if text == "/start":
+        if "contact" in message:
+            contact = message["contact"]
+            await core_api.update_phone_number(from_user.get("id"), contact["phone_number"])
             await bale_client.send_message(
                 chat_id,
-                f"سلام {user.get('full_name') or ''}! یکی از گزینه‌های زیر رو انتخاب کن:",
+                "شماره تماس شما با موفقیت ثبت شد ✅",
+                reply_markup=main_menu_keyboard(),
+            )
+        if text == "/start":
+            profile = await core_api.get_user_profile(from_user.get("id"))
+            if profile and not profile.get("phone_number"):
+                await bale_client.send_message(
+                    chat_id,
+                    "برای استفاده از امکانات ربات، لطفاً شماره تماس خود را ارسال کنید:",
+                    reply_markup=request_contact_keyboard(),
+                )
+            else:
+                await bale_client.send_message(
+                    chat_id,
+                    f"سلام {user.get('full_name') or ''}! یکی از گزینه‌های زیر رو انتخاب کن:",
+                    reply_markup=main_menu_keyboard(),
+                )
+        elif "contact" in message:
+            contact = message["contact"]
+            await core_api.update_phone_number(from_user.get("id"), contact["phone_number"])
+            await bale_client.send_message(
+                chat_id,
+                "شماره تماس شما با موفقیت ثبت شد ✅",
                 reply_markup=main_menu_keyboard(),
             )
         elif text == MENU_LOANS:
@@ -79,20 +137,28 @@ async def handle_message(message: dict) -> None:
             profile = await core_api.get_user_profile(from_user.get("id"))
             if profile:
                 profile_text = (
-                    f"👤 پروفایل شما\n\n"
-                    f"نام: {profile.get('full_name') or 'ثبت نشده'}\n"
-                    f"شماره تماس: {profile.get('phone_number') or 'ثبت نشده'}\n"
-                    f"وضعیت: {'فعال ✅' if profile.get('is_active') else 'غیرفعال ❌'}"
+                    f"تاریخ عضویت: {format_join_date(profile['created_at'])}\n\n"
+                    f"شناسه من: {profile.get('bale_user_id')}\n"
+                    f"یوزرنیم: @{profile.get('bale_username') or 'ثبت نشده'}\n"
+                    f"نام و نام خانوادگی: {profile.get('full_name') or 'ثبت نشده'}\n"
+                    f"شماره موبایل: {mask_phone(profile.get('phone_number'))}"
                 )
-                await bale_client.send_message(chat_id, profile_text)
+                await bale_client.send_message(
+                    chat_id, profile_text, reply_markup=profile_submenu_keyboard()
+                )
             else:
                 await bale_client.send_message(chat_id, "پروفایل شما پیدا نشد.")
+        
         elif text == MENU_INVITE:
             await bale_client.send_message(chat_id, "بخش دعوت دوستان (به‌زودی تکمیل می‌شود)")
         elif text == MENU_ORDER_SEARCH:
             await bale_client.send_message(chat_id, "بخش جستجوی سفارش (به‌زودی تکمیل می‌شود)")
         elif text == MENU_MORE:
             await bale_client.send_message(chat_id, "بخش گزینه‌های بیشتر (به‌زودی تکمیل می‌شود)")
+        elif text == MENU_BACK:
+            await bale_client.send_message(
+                chat_id, "به منوی اصلی برگشتی:", reply_markup=main_menu_keyboard()
+            )
     except Exception as exc:
        print(f"Failed to send message to {chat_id}: {type(exc).__name__}: {exc!r}")
 

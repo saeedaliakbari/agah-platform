@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.user import UserRead
-from app.services.user_service import get_or_create_bale_user, get_user_by_bale_id
+from app.services.user_service import get_or_create_bale_user, get_user_by_bale_id, update_phone_number
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -25,6 +25,20 @@ async def get_bale_user_profile(
     db: AsyncSession = Depends(get_db),
 ) -> UserRead:
     user = await get_user_by_bale_id(db, bale_user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return UserRead.model_validate(user)
+
+@router.patch("/bale/{bale_user_id}/phone", response_model=UserRead)
+async def update_bale_user_phone(
+    bale_user_id: int,
+    phone_number: str,
+    db: AsyncSession = Depends(get_db),
+) -> UserRead:
+    user = await update_phone_number(db, bale_user_id, phone_number)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
