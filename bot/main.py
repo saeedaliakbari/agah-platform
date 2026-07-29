@@ -46,6 +46,17 @@ EMOJI_STATUS = "📋"
 EMOJI_DOCUMENT = "🪪"
 EMOJI_SUCCESS = "✅"
 
+TRANSACTION_TYPE_FA = {
+    "deposit": "واریز",
+    "withdrawal": "برداشت",
+}
+
+TRANSACTION_STATUS_FA = {
+    "pending": "در انتظار بررسی ⏳",
+    "approved": "تایید شده ✅",
+    "rejected": "رد شده ❌",
+}
+
 def main_menu_keyboard() -> dict:
     """چیدمان دکمه‌های منوی اصلی (Reply Keyboard - پایین صفحه)."""
     return {
@@ -108,6 +119,10 @@ def format_join_date(created_at_str: str) -> str:
     days_since = (datetime.now(timezone.utc) - created_at).days
     return f"{jalali_date.strftime('%Y/%m/%d')} ( {days_since} روز )"
 
+def format_datetime(datetime_str: str) -> str:
+    dt = datetime.fromisoformat(datetime_str)
+    jalali_dt = jdatetime.datetime.fromgregorian(datetime=dt)
+    return jalali_dt.strftime("%Y/%m/%d - %H:%M")
 
 def profile_submenu_keyboard() -> dict:
     return {
@@ -270,12 +285,31 @@ async def handle_message(message: dict) -> None:
             if not transactions:
                 await bale_client.send_message(chat_id, "هنوز تراکنشی ثبت نشده است.")
             else:
-                status_emoji = {"pending": "⏳", "approved": "✅", "rejected": "❌"}
-                lines = [f"{EMOJI_RECEIPT} تاریخچه تراکنش‌ها:\n"]
+                messages = []
                 for t in transactions[:10]:
-                    emoji = status_emoji.get(t["status"], "")
-                    lines.append(f"{emoji} {t['amount']:,.0f} تومان - {t['status']}")
-                await bale_client.send_message(chat_id, "\n".join(lines))
+                    type_fa = TRANSACTION_TYPE_FA.get(t["type"], t["type"])
+                    status_fa = TRANSACTION_STATUS_FA.get(t["status"], t["status"])
+
+                    lines = [
+                        f"{EMOJI_RECEIPT} {type_fa}",
+                        f"{EMOJI_CALENDAR} تاریخ: {format_datetime(t['created_at'])}",
+                        f"💵 مبلغ: {t['amount']:,.0f} تومان",
+                        f"{EMOJI_STATUS} وضعیت: {status_fa}",
+                    ]
+
+                    if t.get("transfer_method"):
+                        lines.append(f"💳 روش انتقال: {t['transfer_method']}")
+
+                    if t["status"] == "rejected" and t.get("rejection_reason_text"):
+                        lines.append(f"📝 دلیل رد: {t['rejection_reason_text']}")
+
+                    if t.get("reviewed_at"):
+                        lines.append(f"🕓 زمان بررسی: {format_datetime(t['reviewed_at'])}")
+
+                    messages.append("\n".join(lines))
+
+                full_text = "\n\n➖➖➖➖➖\n\n".join(messages)
+                await bale_client.send_message(chat_id, full_text)
         elif text == MENU_PROFILE:
             profile = await core_api.get_user_profile(from_user.get("id"))
             if profile:
