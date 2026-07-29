@@ -1,5 +1,6 @@
-from app.models.rejection_reason import RejectionReason
-from app.models.user import User
-from app.models.verification_request import VerificationRequest
+from app.models.rejection_reason import RejectionReason  # noqa: F401
+from app.models.user import User  # noqa: F401
+from app.models.verification_request import VerificationRequest  # noqa: F401
+from app.models.wallet_transaction import WalletTransaction  # noqa: F401
 
-__all__ = ["User", "RejectionReason", "VerificationRequest"]
+__all__ = ["User", "RejectionReason", "VerificationRequest", "WalletTransaction"]

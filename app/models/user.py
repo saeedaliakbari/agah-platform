@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 
 from app.models.verification_request import VerificationStatus
-from sqlalchemy import BigInteger, DateTime, Enum, String, func
+from sqlalchemy import BigInteger, DateTime, Enum, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -34,3 +34,4 @@ class User(Base):
     verification_status: Mapped[VerificationStatus] = mapped_column(
         Enum(VerificationStatus), default=VerificationStatus.UNVERIFIED
     )
+    wallet_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
