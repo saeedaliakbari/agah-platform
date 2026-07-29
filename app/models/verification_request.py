@@ -21,6 +21,8 @@ class VerificationRequest(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
     bale_file_id: Mapped[str] = mapped_column(String(255))
+    bale_channel_message_id: Mapped[int | None] = mapped_column(nullable=True)
+    
     status: Mapped[VerificationStatus] = mapped_column(
         Enum(VerificationStatus), default=VerificationStatus.PENDING
     )
