@@ -1,6 +1,7 @@
 import enum
 from datetime import datetime
 
+from app.models.verification_request import VerificationStatus
 from sqlalchemy import BigInteger, DateTime, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,3 +30,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    verification_status: Mapped[VerificationStatus] = mapped_column(
+        Enum(VerificationStatus), default=VerificationStatus.UNVERIFIED
+    )
