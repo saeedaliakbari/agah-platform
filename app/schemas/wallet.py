@@ -17,7 +17,7 @@ class WalletTransactionRead(BaseModel):
     rejection_reason_id: int | None
     created_at: datetime
     reviewed_at: datetime | None
-
+    rejection_reason_text: str | None = None
 
 class WalletBalanceRead(BaseModel):
     balance: float

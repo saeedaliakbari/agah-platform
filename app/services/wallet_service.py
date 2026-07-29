@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.models.wallet_transaction import TransactionStatus, TransactionType, WalletTransaction
-
+from app.models.rejection_reason import RejectionReason
 
 async def create_deposit_request(
     db: AsyncSession,
@@ -83,4 +83,13 @@ async def get_user_transactions(db: AsyncSession, user_id: int) -> list[WalletTr
         .where(WalletTransaction.user_id == user_id)
         .order_by(WalletTransaction.created_at.desc())
     )
-    return list(result.scalars().all())
+    transactions = list(result.scalars().all())
+
+    for transaction in transactions:
+        if transaction.rejection_reason_id:
+            reason = await db.get(RejectionReason, transaction.rejection_reason_id)
+            transaction.rejection_reason_text = reason.text if reason else None
+        else:
+            transaction.rejection_reason_text = None
+
+    return transactions
