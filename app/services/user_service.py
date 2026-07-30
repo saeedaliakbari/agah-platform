@@ -1,3 +1,5 @@
+
+import secrets
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,3 +71,41 @@ async def get_all_customers(db: AsyncSession) -> list[User]:
         select(User).where(User.role == UserRole.CUSTOMER).order_by(User.created_at.desc())
     )
     return list(result.scalars().all())
+
+def generate_referral_code() -> str:
+    return secrets.token_hex(4).upper()  # مثلاً "A1B2C3D4"
+
+
+async def get_or_create_referral_code(db: AsyncSession, user: User) -> str:
+    if user.referral_code:
+        return user.referral_code
+
+    code = generate_referral_code()
+    user.referral_code = code
+    await db.commit()
+    await db.refresh(user)
+    return code
+
+
+async def get_user_by_referral_code(db: AsyncSession, code: str) -> User | None:
+    result = await db.execute(select(User).where(User.referral_code == code))
+    return result.scalar_one_or_none()
+
+
+async def set_referrer(db: AsyncSession, user: User, referral_code: str) -> bool:
+    """اگر کاربر قبلاً معرف نداشته و کد معتبر باشد، معرف را ثبت می‌کند."""
+    if user.referred_by_user_id:
+        return False  # قبلاً یک معرف دارد
+
+    referrer = await get_user_by_referral_code(db, referral_code)
+    if not referrer or referrer.id == user.id:
+        return False  # کد نامعتبر یا معرفی خود فرد
+
+    user.referred_by_user_id = referrer.id
+    await db.commit()
+    return True
+
+
+async def count_referrals(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(select(User).where(User.referred_by_user_id == user_id))
+    return len(list(result.scalars().all()))
