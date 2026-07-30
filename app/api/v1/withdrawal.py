@@ -10,6 +10,7 @@ from app.services.withdrawal_service import (
     create_withdrawal_request,
     find_matching_withdrawals,
     reserve_withdrawal_amounts,
+    release_withdrawal_amount,
 )
 
 router = APIRouter(prefix="/withdrawal", tags=["withdrawal"])
@@ -78,3 +79,12 @@ async def reserve_matches(amount: float, db: AsyncSession = Depends(get_db)) -> 
             )
         )
     return result
+
+@router.post("/{withdrawal_request_id}/release")
+async def release_amount(
+    withdrawal_request_id: int,
+    amount: float,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    await release_withdrawal_amount(db, withdrawal_request_id, amount)
+    return {"ok": True}
