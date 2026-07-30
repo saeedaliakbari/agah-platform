@@ -18,7 +18,7 @@ from app.services.wallet_service import (
 )
 from app.services.withdrawal_service import release_withdrawal_amount
 from app.models.withdrawal_request import WithdrawalRequest as WithdrawalRequestModel
-
+from app.services.bank_account_service import get_bank_account_by_id
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 settings = get_settings()
@@ -86,18 +86,20 @@ async def approve_deposit(
             detail="Transaction not found or already reviewed",
         )
 
-    user = await get_user_by_id(db, transaction.user_id)
-    if user and user.bale_user_id:
+    depositor = await get_user_by_id(db, transaction.user_id)
+    if depositor and depositor.bale_user_id:
         await send_bale_message(
-            user.bale_user_id,
+            depositor.bale_user_id,
             f"✅ واریز شما به مبلغ {transaction.amount:,.0f} تومان تایید و به کیف پول اضافه شد.",
         )
 
-    # اگر این واریز بخشی از تسویه‌ی یک درخواست برداشت بود، به برداشت‌کننده هم اطلاع بده
+    withdrawal = None
+    bank_account = None
+    withdrawal_owner = None
     if transaction.withdrawal_request_id:
-
         withdrawal = await db.get(WithdrawalRequestModel, transaction.withdrawal_request_id)
         if withdrawal:
+            bank_account = await get_bank_account_by_id(db, withdrawal.bank_account_id)
             withdrawal_owner = await get_user_by_id(db, withdrawal.user_id)
             if withdrawal_owner and withdrawal_owner.bale_user_id:
                 await send_bale_message(
@@ -106,20 +108,33 @@ async def approve_deposit(
                 )
 
     if transaction.bale_channel_message_id:
-        caption = (
-            f"💰 درخواست شارژ کیف پول\n\n"
-            f"👤 نام: {user.full_name if user else 'نامشخص'}\n"
-            f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
-            f"💳 روش انتقال: {transaction.transfer_method or 'نامشخص'}\n"
-            f"💵 مبلغ: {transaction.amount:,.0f} تومان\n"
-            f"📋 وضعیت: تایید شد ✅"
-        )
+        caption_lines = [
+            "💰 درخواست شارژ کیف پول (P2P)\n",
+            f"👤 واریزکننده: {depositor.full_name if depositor else 'نامشخص'}",
+            f"🔖 یوزرنیم واریزکننده: @{depositor.bale_username if depositor and depositor.bale_username else 'ثبت نشده'}",
+            f"🆔 آیدی بله واریزکننده: {depositor.bale_user_id if depositor else 'نامشخص'}\n",
+        ]
+        if bank_account:
+            caption_lines.extend([
+                f"🏦 بانک مقصد: {bank_account.bank_name}",
+                f"👤 صاحب حساب: {bank_account.account_holder_name}",
+                f"💳 شماره کارت: {bank_account.card_number or 'ثبت نشده'}",
+                f"🔢 شماره شبا: {bank_account.sheba_number}",
+            ])
+        if withdrawal_owner:
+            caption_lines.extend([
+                f"🔖 یوزرنیم دریافت‌کننده: @{withdrawal_owner.bale_username or 'ثبت نشده'}",
+                f"🆔 آیدی بله دریافت‌کننده: {withdrawal_owner.bale_user_id}\n",
+            ])
+        caption_lines.extend([
+            f"💵 مبلغ: {transaction.amount:,.0f} تومان",
+            f"📋 وضعیت: تایید شد ✅",
+        ])
         await edit_channel_caption(
-            settings.wallet_channel_id, transaction.bale_channel_message_id, caption
+            settings.wallet_channel_id, transaction.bale_channel_message_id, "\n".join(caption_lines)
         )
 
     return WalletTransactionRead.model_validate(transaction)
-
 
 @router.post("/deposit/{transaction_id}/reject", response_model=WalletTransactionRead)
 async def reject_deposit(
@@ -135,34 +150,53 @@ async def reject_deposit(
             detail="Transaction not found or already reviewed",
         )
 
-    user = await get_user_by_id(db, transaction.user_id)
+    depositor = await get_user_by_id(db, transaction.user_id)
     reasons = await get_active_rejection_reasons(db)
     reason_text = next((r.text for r in reasons if r.id == rejection_reason_id), "دلیل نامشخص")
 
-    if user and user.bale_user_id:
+    if depositor and depositor.bale_user_id:
         await send_bale_message(
-            user.bale_user_id,
+            depositor.bale_user_id,
             f"❌ واریز شما به مبلغ {transaction.amount:,.0f} تومان رد شد.\nدلیل: {reason_text}",
         )
 
-    # اگر این واریز بخشی از تسویه‌ی برداشت بود، مبلغ رزروشده را برگردان تا دوباره قابل تطبیق باشد
+    bank_account = None
+    withdrawal_owner = None
     if transaction.withdrawal_request_id:
         await release_withdrawal_amount(
             db, transaction.withdrawal_request_id, float(transaction.amount)
         )
+        withdrawal = await db.get(WithdrawalRequestModel, transaction.withdrawal_request_id)
+        if withdrawal:
+            bank_account = await get_bank_account_by_id(db, withdrawal.bank_account_id)
+            withdrawal_owner = await get_user_by_id(db, withdrawal.user_id)
 
     if transaction.bale_channel_message_id:
-        caption = (
-            f"💰 درخواست شارژ کیف پول\n\n"
-            f"👤 نام: {user.full_name if user else 'نامشخص'}\n"
-            f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
-            f"💳 روش انتقال: {transaction.transfer_method or 'نامشخص'}\n"
-            f"💵 مبلغ: {transaction.amount:,.0f} تومان\n"
-            f"📋 وضعیت: رد شد ❌\n"
-            f"دلیل: {reason_text}"
-        )
+        caption_lines = [
+            "💰 درخواست شارژ کیف پول (P2P)\n",
+            f"👤 واریزکننده: {depositor.full_name if depositor else 'نامشخص'}",
+            f"🔖 یوزرنیم واریزکننده: @{depositor.bale_username if depositor and depositor.bale_username else 'ثبت نشده'}",
+            f"🆔 آیدی بله واریزکننده: {depositor.bale_user_id if depositor else 'نامشخص'}\n",
+        ]
+        if bank_account:
+            caption_lines.extend([
+                f"🏦 بانک مقصد: {bank_account.bank_name}",
+                f"👤 صاحب حساب: {bank_account.account_holder_name}",
+                f"💳 شماره کارت: {bank_account.card_number or 'ثبت نشده'}",
+                f"🔢 شماره شبا: {bank_account.sheba_number}",
+            ])
+        if withdrawal_owner:
+            caption_lines.extend([
+                f"🔖 یوزرنیم دریافت‌کننده: @{withdrawal_owner.bale_username or 'ثبت نشده'}",
+                f"🆔 آیدی بله دریافت‌کننده: {withdrawal_owner.bale_user_id}\n",
+            ])
+        caption_lines.extend([
+            f"💵 مبلغ: {transaction.amount:,.0f} تومان",
+            f"📋 وضعیت: رد شد ❌",
+            f"دلیل: {reason_text}",
+        ])
         await edit_channel_caption(
-            settings.wallet_channel_id, transaction.bale_channel_message_id, caption
+            settings.wallet_channel_id, transaction.bale_channel_message_id, "\n".join(caption_lines)
         )
 
     return WalletTransactionRead.model_validate(transaction)
