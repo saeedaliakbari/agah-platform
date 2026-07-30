@@ -21,6 +21,7 @@ bale_client = BaleClient(token=BOT_TOKEN)
 core_api = CoreApiClient(base_url=CORE_API_URL)
 # حالت مکالمه‌ی هر کاربر (in-memory، ساده - بعداً می‌تونه به Redis منتقل بشه)
 user_states: dict[int, dict] = {}
+user_reserved_matches: dict[int, list[dict]] = {}
 
 MENU_LOANS = "💰 وام‌های بانکی"
 MENU_CLUB_SERVICES = "🎁 خدمات باشگاه آگاه"
@@ -36,6 +37,7 @@ MENU_TRANSACTIONS = "📜 تاریخچه تراکنش‌ها"
 MENU_WITHDRAWAL = "🏧 برداشت وجه"
 MENU_MY_ACCOUNTS = "🏦 حساب‌های بانکی من"
 MENU_ADD_ACCOUNT = "➕ ثبت حساب جدید"
+MENU_MY_DEPOSITS = "📝 واریزهای رزروشده من"
 
 EMOJI_MONEY = "💰"
 EMOJI_RECEIPT = "🧾"
@@ -126,26 +128,26 @@ def main_menu_keyboard() -> dict:
 def wallet_submenu_keyboard() -> dict:
     return {
         "keyboard": [
-            [{"text": MENU_DEPOSIT}, {"text": MENU_TRANSACTIONS}],
-            [{"text": "🔙 بازگشت"}],
-        ],
-        "resize_keyboard": True,
-    }
-def transfer_method_keyboard() -> dict:
-    return {
-        "keyboard": [
-            [{"text": "پایا"}, {"text": "پل"}],
-            [{"text": "کارت به کارت"}, {"text": "حساب به حساب"}],
+            [{"text": MENU_DEPOSIT}, {"text": MENU_WITHDRAWAL}],
+            [{"text": MENU_TRANSACTIONS}, {"text": MENU_MY_ACCOUNTS}],
+            [{"text": MENU_MY_DEPOSITS}],
             [{"text": "🔙 بازگشت"}],
         ],
         "resize_keyboard": True,
     }
 
-def wallet_submenu_keyboard() -> dict:
+def reserved_deposits_keyboard(matches: list[dict]) -> dict:
+    keyboard = []
+    for i, m in enumerate(matches, start=1):
+        keyboard.append([{"text": f"✅ تکمیل {i}"}, {"text": f"❌ لغو {i}"}])
+    keyboard.append([{"text": "🔙 بازگشت"}])
+    return {"keyboard": keyboard, "resize_keyboard": True}
+
+def transfer_method_keyboard() -> dict:
     return {
         "keyboard": [
-            [{"text": MENU_DEPOSIT}, {"text": MENU_WITHDRAWAL}],
-            [{"text": MENU_TRANSACTIONS}, {"text": MENU_MY_ACCOUNTS}],
+            [{"text": "پایا"}, {"text": "پل"}],
+            [{"text": "کارت به کارت"}, {"text": "حساب به حساب"}],
             [{"text": "🔙 بازگشت"}],
         ],
         "resize_keyboard": True,
@@ -214,20 +216,23 @@ async def handle_message(message: dict) -> None:
         if "photo" in message:
             photo_file_id = message["photo"][-1]["file_id"]
 
-            if state and state.get("step") == "awaiting_receipt":
+            if state and state.get("step") == "awaiting_final_receipt":
+                match = user_reserved_matches[user_id][state["match_index"]]
+                acc = match["bank_account"]
+
                 caption_lines = [
-                    "💰 درخواست شارژ کیف پول (تسویه P2P)\n",
-                    f"{EMOJI_NAME} نام واریزکننده: {user.get('full_name') or 'نامشخص'}",
-                    f"{EMOJI_ID} آیدی بله: {user_id}",
-                    f"💵 مبلغ کل: {state['amount']:,.0f} تومان\n",
-                    "🏦 حساب‌های مقصد:",
+                    "💰 درخواست شارژ کیف پول (P2P)\n",
+                    f"👤 واریزکننده: {user.get('full_name') or 'نامشخص'}",
+                    f"🔖 یوزرنیم واریزکننده: @{user.get('bale_username') or 'ثبت نشده'}",
+                    f"🆔 آیدی بله واریزکننده: {user_id}\n",
+                    f"🏦 بانک مقصد: {acc['bank_name']}",
+                    f"👤 صاحب حساب: {acc['account_holder_name']}",
+                    f"💳 شماره کارت: {acc.get('card_number') or 'ثبت نشده'}",
+                    f"🔢 شماره شبا: {acc['sheba_number']}\n",
+                    f"💳 روش انتقال: {state['transfer_method_choice']}",
+                    f"💵 مبلغ: {state['actual_amount']:,.0f} تومان",
+                    f"{EMOJI_STATUS} وضعیت: در انتظار بررسی ⏳",
                 ]
-                for m in state["matches"]:
-                    acc = m["bank_account"]
-                    caption_lines.append(
-                        f"- {acc['bank_name']} ({acc['account_holder_name']}): {m['amount_to_pay']:,.0f} تومان"
-                    )
-                caption_lines.append(f"\n{EMOJI_STATUS} وضعیت: در انتظار بررسی ⏳")
                 caption = "\n".join(caption_lines)
 
                 channel_message = await bale_client.send_photo(
@@ -236,17 +241,16 @@ async def handle_message(message: dict) -> None:
                 channel_file_id = channel_message["result"]["photo"][-1]["file_id"]
                 channel_message_id = channel_message["result"]["message_id"]
 
-                # برای هر تطبیق، یک تراکنش واریز جدا ثبت می‌کنیم
-                for m in state["matches"]:
-                    await core_api.submit_deposit(
-                        user_id,
-                        m["amount_to_pay"],
-                        channel_file_id,
-                        transfer_method=f"P2P - {m['bank_account']['bank_name']}",
-                        bale_channel_message_id=channel_message_id,
-                        withdrawal_request_id=m["withdrawal_request_id"],
-                    )
+                await core_api.submit_deposit(
+                    user_id,
+                    state["actual_amount"],
+                    channel_file_id,
+                    transfer_method=state["transfer_method_choice"],
+                    bale_channel_message_id=channel_message_id,
+                    withdrawal_request_id=match["withdrawal_request_id"],
+                )
 
+                user_reserved_matches[user_id].pop(state["match_index"])
                 del user_states[user_id]
 
                 await bale_client.send_message(
@@ -316,37 +320,32 @@ async def handle_message(message: dict) -> None:
                     await bale_client.send_message(chat_id, "لطفاً یک عدد معتبر وارد کنید.")
                 else:
                     matches = await core_api.reserve_withdrawal_matches(amount)
+                    del user_states[user_id]
+
                     if not matches:
                         await bale_client.send_message(
                             chat_id,
                             "در حال حاضر درخواست برداشتی برای تطبیق وجود ندارد. لطفاً بعداً تلاش کنید.",
                             reply_markup=wallet_submenu_keyboard(),
                         )
-                        del user_states[user_id]
                     else:
-                        state["amount"] = amount
-                        state["matches"] = matches
-                        state["step"] = "awaiting_receipt"
+                        existing = user_reserved_matches.setdefault(user_id, [])
+                        existing.extend(matches)
 
-                        lines = ["💳 لطفاً مبلغ خود را به حساب(های) زیر واریز کنید:\n"]
+                        lines = ["✅ تطبیق با موفقیت انجام شد و رزرو گردید.\n"]
                         for m in matches:
                             acc = m["bank_account"]
                             lines.append(
-                                f"🏦 بانک: {acc['bank_name']}\n"
-                                f"👤 صاحب حساب: {acc['account_holder_name']}\n"
-                                f"💳 شماره کارت: {acc.get('card_number') or 'ثبت نشده'}\n"
-                                f"🔢 شبا: {acc['sheba_number']}\n"
-                                f"💵 مبلغ: {m['amount_to_pay']:,.0f} تومان\n"
+                                f"🏦 {acc['bank_name']} - {acc['account_holder_name']}: "
+                                f"{m['amount_to_pay']:,.0f} تومان"
                             )
-                        lines.append("\nپس از واریز، تصویر رسید را ارسال کنید:")
-                        await bale_client.send_message(chat_id, "\n".join(lines))
-            elif state["step"] == "awaiting_transfer_method":
-                if text in ("پایا", "پل", "کارت به کارت", "حساب به حساب"):
-                    state["transfer_method"] = text
-                    state["step"] = "awaiting_receipt"
-                    await bale_client.send_message(chat_id, "لطفاً تصویر رسید واریز را ارسال کنید:")
-                else:
-                    await bale_client.send_message(chat_id, "لطفاً یکی از روش‌های موجود را انتخاب کنید.")
+                        lines.append(
+                            "\nبرای تکمیل واریز (ارسال مبلغ واقعی، روش انتقال و رسید)، "
+                            f"به بخش «{MENU_MY_DEPOSITS}» بروید."
+                        )
+                        await bale_client.send_message(
+                            chat_id, "\n".join(lines), reply_markup=wallet_submenu_keyboard()
+                        )
             elif state["step"] == "awaiting_sheba":
                 sheba = text.strip().upper().replace(" ", "")
                 if not sheba.startswith("IR"):
@@ -409,6 +408,66 @@ async def handle_message(message: dict) -> None:
                             reply_markup=wallet_submenu_keyboard(),
                         )
                     del user_states[user_id]
+            elif state["step"] == "awaiting_actual_amount":
+                try:
+                    actual_amount = float(text.replace(",", "").strip())
+                    if actual_amount <= 0:
+                        raise ValueError
+                except ValueError:
+                    await bale_client.send_message(chat_id, "لطفاً یک عدد معتبر وارد کنید.")
+                else:
+                    match = user_reserved_matches[user_id][state["match_index"]]
+                    if actual_amount < match["amount_to_pay"]:
+                        # مابه‌التفاوت را آزاد کن تا دوباره قابل تطبیق باشد
+                        difference = match["amount_to_pay"] - actual_amount
+                        await core_api.release_withdrawal_amount(
+                            match["withdrawal_request_id"], difference
+                        )
+                        match["amount_to_pay"] = actual_amount
+
+                    state["actual_amount"] = actual_amount
+                    state["step"] = "awaiting_transfer_method"
+                    await bale_client.send_message(
+                        chat_id, "روش انتقال را انتخاب کنید:", reply_markup=transfer_method_keyboard()
+                    )
+
+            elif state["step"] == "awaiting_transfer_method":
+                if text in ("پایا", "پل", "کارت به کارت", "حساب به حساب"):
+                    state["transfer_method_choice"] = text
+                    state["step"] = "awaiting_final_receipt"
+                    await bale_client.send_message(chat_id, "لطفاً تصویر رسید واریز را ارسال کنید:")
+                else:
+                    await bale_client.send_message(chat_id, "لطفاً یکی از روش‌های موجود را انتخاب کنید.")
+
+
+        elif text.startswith("✅ تکمیل ") or text.startswith("❌ لغو "):
+            matches = user_reserved_matches.get(user_id, [])
+            try:
+                index = int(text.split()[-1]) - 1
+                selected_match = matches[index]
+            except (ValueError, IndexError):
+                await bale_client.send_message(chat_id, "مورد انتخابی نامعتبر است.")
+            else:
+                if text.startswith("❌ لغو "):
+                    await core_api.release_withdrawal_amount(
+                        selected_match["withdrawal_request_id"], selected_match["amount_to_pay"]
+                    )
+                    matches.pop(index)
+                    await bale_client.send_message(
+                        chat_id, "رزرو لغو شد.", reply_markup=wallet_submenu_keyboard()
+                    )
+                else:
+                    user_states[user_id] = {
+                        "step": "awaiting_actual_amount",
+                        "match_index": index,
+                    }
+                    acc = selected_match["bank_account"]
+                    await bale_client.send_message(
+                        chat_id,
+                        f"مبلغی که واقعاً به حساب زیر واریز کردید را وارد کنید:\n"
+                        f"🏦 {acc['bank_name']} - {acc['account_holder_name']}\n"
+                        f"(مبلغ پیشنهادی: {selected_match['amount_to_pay']:,.0f} تومان)",
+                    )
 
         elif text == MENU_LOANS:
             await bale_client.send_message(chat_id, "بخش وام‌های بانکی (به‌زودی تکمیل می‌شود)")
@@ -433,6 +492,24 @@ async def handle_message(message: dict) -> None:
             else:
                 for t in transactions[:10]:
                     await bale_client.send_message(chat_id, format_transaction(t))
+        elif text == MENU_MY_DEPOSITS:
+            matches = user_reserved_matches.get(user_id, [])
+            if not matches:
+                await bale_client.send_message(
+                    chat_id, "شما در حال حاضر واریز رزروشده‌ای ندارید.", reply_markup=wallet_submenu_keyboard()
+                )
+            else:
+                lines = ["📝 واریزهای رزروشده‌ی شما:\n"]
+                for i, m in enumerate(matches, start=1):
+                    acc = m["bank_account"]
+                    lines.append(
+                        f"{i}. {acc['bank_name']} - {acc['account_holder_name']} "
+                        f"({m['amount_to_pay']:,.0f} تومان)\n"
+                        f"   کارت: {acc.get('card_number') or 'ثبت نشده'} | شبا: {acc['sheba_number']}"
+                    )
+                await bale_client.send_message(
+                    chat_id, "\n".join(lines), reply_markup=reserved_deposits_keyboard(matches)
+                )
         elif text == MENU_PROFILE:
             profile = await core_api.get_user_profile(user_id)
             if profile:
