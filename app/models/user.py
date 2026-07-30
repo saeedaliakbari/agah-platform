@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 
 from app.models.verification_request import VerificationStatus
-from sqlalchemy import BigInteger, DateTime, Enum, Numeric, String, func
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -28,6 +28,9 @@ class User(Base):
 
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.CUSTOMER)
     is_active: Mapped[bool] = mapped_column(default=True)
+
+    referral_code: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True)
+    referred_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
