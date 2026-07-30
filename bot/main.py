@@ -220,19 +220,33 @@ async def handle_message(message: dict) -> None:
                 match = user_reserved_matches[user_id][state["match_index"]]
                 acc = match["bank_account"]
 
+                withdrawal_owner_info = await core_api.get_user_profile_by_withdrawal(
+                    match["withdrawal_request_id"]
+                )
+
                 caption_lines = [
                     "💰 درخواست شارژ کیف پول (P2P)\n",
                     f"👤 واریزکننده: {user.get('full_name') or 'نامشخص'}",
                     f"🔖 یوزرنیم واریزکننده: @{user.get('bale_username') or 'ثبت نشده'}",
-                    f"🆔 آیدی بله واریزکننده: {user_id}\n",
+                    f"🆔 آیدی بله واریزکننده: {user_id}",
+                    f"📞 موبایل واریزکننده: {user.get('phone_number') or 'ثبت نشده'}\n",
                     f"🏦 بانک مقصد: {acc['bank_name']}",
                     f"👤 صاحب حساب: {acc['account_holder_name']}",
                     f"💳 شماره کارت: {acc.get('card_number') or 'ثبت نشده'}",
                     f"🔢 شماره شبا: {acc['sheba_number']}\n",
+                ]
+                if withdrawal_owner_info:
+                    caption_lines.extend([
+                        f"👤 دریافت‌کننده: {withdrawal_owner_info.get('full_name') or 'نامشخص'}",
+                        f"🔖 یوزرنیم دریافت‌کننده: @{withdrawal_owner_info.get('bale_username') or 'ثبت نشده'}",
+                        f"🆔 آیدی بله دریافت‌کننده: {withdrawal_owner_info.get('bale_user_id')}",
+                        f"📞 موبایل دریافت‌کننده: {withdrawal_owner_info.get('phone_number') or 'ثبت نشده'}\n",
+                    ])
+                caption_lines.extend([
                     f"💳 روش انتقال: {state['transfer_method_choice']}",
                     f"💵 مبلغ: {state['actual_amount']:,.0f} تومان",
                     f"{EMOJI_STATUS} وضعیت: در انتظار بررسی ⏳",
-                ]
+                ])
                 caption = "\n".join(caption_lines)
 
                 channel_message = await bale_client.send_photo(

@@ -5,13 +5,15 @@ from app.core.database import get_db
 from app.schemas.bank_account import BankAccountRead
 from app.schemas.withdrawal import MatchedWithdrawal, WithdrawalRequestRead
 from app.services.bank_account_service import get_bank_account_by_id
-from app.services.user_service import get_user_by_bale_id
+from app.services.user_service import get_user_by_bale_id,get_user_by_id
 from app.services.withdrawal_service import (
     create_withdrawal_request,
     find_matching_withdrawals,
     reserve_withdrawal_amounts,
     release_withdrawal_amount,
 )
+from app.schemas.user import UserRead
+from app.models.withdrawal_request import WithdrawalRequest as WithdrawalRequestModel
 
 router = APIRouter(prefix="/withdrawal", tags=["withdrawal"])
 
@@ -88,3 +90,17 @@ async def release_amount(
 ) -> dict:
     await release_withdrawal_amount(db, withdrawal_request_id, amount)
     return {"ok": True}
+
+@router.get("/{withdrawal_request_id}/owner", response_model=UserRead)
+async def get_withdrawal_owner(
+    withdrawal_request_id: int, db: AsyncSession = Depends(get_db)
+) -> UserRead:
+    withdrawal = await db.get(WithdrawalRequestModel, withdrawal_request_id)
+    if not withdrawal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Withdrawal not found")
+
+    user = await get_user_by_id(db, withdrawal.user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return UserRead.model_validate(user)

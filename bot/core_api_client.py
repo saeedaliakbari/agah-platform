@@ -124,3 +124,18 @@ class CoreApiClient:
             return []
         response.raise_for_status()
         return response.json()
+
+    async def release_withdrawal_amount(self, withdrawal_request_id: int, amount: float) -> None:
+        response = await self._client.post(
+            f"/api/v1/withdrawal/{withdrawal_request_id}/release", params={"amount": amount}
+        )
+        response.raise_for_status()
+
+    async def get_user_profile_by_withdrawal(self, withdrawal_request_id: int) -> dict | None:
+        response = await self._client.get(
+            f"/api/v1/withdrawal/{withdrawal_request_id}/owner"
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
