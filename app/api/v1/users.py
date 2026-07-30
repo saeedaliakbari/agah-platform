@@ -8,7 +8,11 @@ from app.core.deps import require_admin
 from app.models.user import User as UserModel
 
 router = APIRouter(prefix="/users", tags=["users"])
-
+from app.services.user_service import (
+    count_referrals,
+    get_or_create_referral_code,
+    set_referrer,
+)
 
 @router.post("/bale/identify", response_model=UserRead)
 async def identify_bale_user(
@@ -55,3 +59,27 @@ async def list_customers(
 ) -> list[UserRead]:
     users = await get_all_customers(db)
     return [UserRead.model_validate(u) for u in users]
+
+@router.get("/bale/{bale_user_id}/referral")
+async def get_referral_info(
+    bale_user_id: int, db: AsyncSession = Depends(get_db)
+) -> dict:
+    user = await get_user_by_bale_id(db, bale_user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    code = await get_or_create_referral_code(db, user)
+    count = await count_referrals(db, user.id)
+    return {"referral_code": code, "referral_count": count}
+
+
+@router.post("/bale/{bale_user_id}/set-referrer")
+async def set_user_referrer(
+    bale_user_id: int, referral_code: str, db: AsyncSession = Depends(get_db)
+) -> dict:
+    user = await get_user_by_bale_id(db, bale_user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    success = await set_referrer(db, user, referral_code)
+    return {"success": success}
