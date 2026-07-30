@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Verification from './pages/Verification'
+import WalletDeposits from './pages/WalletDeposits'
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth()
@@ -26,6 +27,14 @@ function App() {
         element={
           <ProtectedRoute>
             <Verification />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/wallet-deposits"
+        element={
+          <ProtectedRoute>
+            <WalletDeposits />
           </ProtectedRoute>
         }
       />
