@@ -16,6 +16,9 @@ from app.services.wallet_service import (
     get_user_transactions,
     reject_deposit_request,
 )
+from app.services.withdrawal_service import release_withdrawal_amount
+from app.models.withdrawal_request import WithdrawalRequest as WithdrawalRequestModel
+
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 settings = get_settings()
@@ -28,6 +31,7 @@ async def submit_deposit(
     receipt_bale_file_id: str,
     transfer_method: str | None = None,
     bale_channel_message_id: int | None = None,
+    withdrawal_request_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> WalletTransactionRead:
     user = await get_user_by_bale_id(db, bale_user_id)
@@ -35,7 +39,7 @@ async def submit_deposit(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     transaction = await create_deposit_request(
-        db, user.id, amount, receipt_bale_file_id, transfer_method, bale_channel_message_id
+        db, user.id, amount, receipt_bale_file_id, transfer_method, bale_channel_message_id, withdrawal_request_id
     )
     return WalletTransactionRead.model_validate(transaction)
 
@@ -89,6 +93,18 @@ async def approve_deposit(
             f"✅ واریز شما به مبلغ {transaction.amount:,.0f} تومان تایید و به کیف پول اضافه شد.",
         )
 
+    # اگر این واریز بخشی از تسویه‌ی یک درخواست برداشت بود، به برداشت‌کننده هم اطلاع بده
+    if transaction.withdrawal_request_id:
+
+        withdrawal = await db.get(WithdrawalRequestModel, transaction.withdrawal_request_id)
+        if withdrawal:
+            withdrawal_owner = await get_user_by_id(db, withdrawal.user_id)
+            if withdrawal_owner and withdrawal_owner.bale_user_id:
+                await send_bale_message(
+                    withdrawal_owner.bale_user_id,
+                    f"✅ مبلغ {transaction.amount:,.0f} تومان از درخواست برداشت شما تسویه شد.",
+                )
+
     if transaction.bale_channel_message_id:
         caption = (
             f"💰 درخواست شارژ کیف پول\n\n"
@@ -96,7 +112,7 @@ async def approve_deposit(
             f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
             f"💳 روش انتقال: {transaction.transfer_method or 'نامشخص'}\n"
             f"💵 مبلغ: {transaction.amount:,.0f} تومان\n"
-            f"📋 وضعیت: تایید شد ✅"  # یا "رد شد ❌" برای تابع reject
+            f"📋 وضعیت: تایید شد ✅"
         )
         await edit_channel_caption(
             settings.wallet_channel_id, transaction.bale_channel_message_id, caption
@@ -129,6 +145,12 @@ async def reject_deposit(
             f"❌ واریز شما به مبلغ {transaction.amount:,.0f} تومان رد شد.\nدلیل: {reason_text}",
         )
 
+    # اگر این واریز بخشی از تسویه‌ی برداشت بود، مبلغ رزروشده را برگردان تا دوباره قابل تطبیق باشد
+    if transaction.withdrawal_request_id:
+        await release_withdrawal_amount(
+            db, transaction.withdrawal_request_id, float(transaction.amount)
+        )
+
     if transaction.bale_channel_message_id:
         caption = (
             f"💰 درخواست شارژ کیف پول\n\n"
@@ -136,7 +158,8 @@ async def reject_deposit(
             f"🆔 آیدی بله: {user.bale_user_id if user else 'نامشخص'}\n"
             f"💳 روش انتقال: {transaction.transfer_method or 'نامشخص'}\n"
             f"💵 مبلغ: {transaction.amount:,.0f} تومان\n"
-            f"📋 وضعیت: تایید شد ✅"  # یا "رد شد ❌" برای تابع reject
+            f"📋 وضعیت: رد شد ❌\n"
+            f"دلیل: {reason_text}"
         )
         await edit_channel_caption(
             settings.wallet_channel_id, transaction.bale_channel_message_id, caption

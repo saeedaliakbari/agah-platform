@@ -14,6 +14,7 @@ async def create_deposit_request(
     receipt_bale_file_id: str,
     transfer_method: str | None = None,
     bale_channel_message_id: int | None = None,
+    withdrawal_request_id: int | None = None,
 ) -> WalletTransaction:
     transaction = WalletTransaction(
         user_id=user_id,
@@ -22,13 +23,13 @@ async def create_deposit_request(
         receipt_bale_file_id=receipt_bale_file_id,
         transfer_method=transfer_method,
         bale_channel_message_id=bale_channel_message_id,
+        withdrawal_request_id=withdrawal_request_id,
         status=TransactionStatus.PENDING,
     )
     db.add(transaction)
     await db.commit()
     await db.refresh(transaction)
     return transaction
-
 
 async def get_pending_deposit_requests(db: AsyncSession) -> list[WalletTransaction]:
     result = await db.execute(
