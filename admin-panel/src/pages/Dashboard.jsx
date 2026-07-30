@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 function Dashboard() {
@@ -14,7 +15,16 @@ function Dashboard() {
           خروج
         </button>
       </div>
-      <p className="text-gray-600">به پنل ادمین آگاه پلتفرم خوش آمدید.</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link
+          to="/verification"
+          className="bg-white p-6 rounded-lg shadow hover:shadow-md transition"
+        >
+          <h2 className="font-semibold text-lg text-gray-800">احراز هویت</h2>
+          <p className="text-sm text-gray-500 mt-1">بررسی درخواست‌های در انتظار</p>
+        </Link>
+      </div>
     </div>
   )
 }
