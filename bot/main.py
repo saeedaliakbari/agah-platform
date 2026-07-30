@@ -304,7 +304,12 @@ async def handle_message(message: dict) -> None:
                 reply_markup=main_menu_keyboard(),
             )
 
-        elif text == "/start":
+        elif text.startswith("/start"):
+            parts = text.split(maxsplit=1)
+            if len(parts) > 1:
+                referral_code = parts[1].strip()
+                await core_api.set_referrer(user_id, referral_code)
+
             profile = await core_api.get_user_profile(user_id)
             if profile and not profile.get("phone_number"):
                 await bale_client.send_message(
@@ -566,7 +571,17 @@ async def handle_message(message: dict) -> None:
             else:
                 await bale_client.send_message(chat_id, "پروفایل شما پیدا نشد.")
         elif text == MENU_INVITE:
-            await bale_client.send_message(chat_id, "بخش دعوت دوستان (به‌زودی تکمیل می‌شود)")
+            referral_info = await core_api.get_referral_info(user_id)
+            bot_username = os.getenv("BALE_BOT_USERNAME", "your_bot")
+            invite_link = f"https://ble.ir/{bot_username}?start={referral_info['referral_code']}"
+
+            await bale_client.send_message(
+                chat_id,
+                f"🤝 دعوت دوستان\n\n"
+                f"کد دعوت شما: {referral_info['referral_code']}\n"
+                f"تعداد افراد دعوت‌شده: {referral_info['referral_count']} نفر\n\n"
+                f"لینک دعوت شما:\n{invite_link}",
+            )
         elif text == MENU_ORDER_SEARCH:
             await bale_client.send_message(chat_id, "بخش جستجوی سفارش (به‌زودی تکمیل می‌شود)")
         elif text == MENU_MORE:

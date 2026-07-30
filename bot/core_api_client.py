@@ -139,3 +139,16 @@ class CoreApiClient:
             return None
         response.raise_for_status()
         return response.json()
+
+    async def set_referrer(self, bale_user_id: int, referral_code: str) -> dict:
+        response = await self._client.post(
+            f"/api/v1/users/bale/{bale_user_id}/set-referrer",
+            params={"referral_code": referral_code},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_referral_info(self, bale_user_id: int) -> dict:
+        response = await self._client.get(f"/api/v1/users/bale/{bale_user_id}/referral")
+        response.raise_for_status()
+        return response.json()
