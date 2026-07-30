@@ -38,6 +38,14 @@ MENU_WITHDRAWAL = "🏧 برداشت وجه"
 MENU_MY_ACCOUNTS = "🏦 حساب‌های بانکی من"
 MENU_ADD_ACCOUNT = "➕ ثبت حساب جدید"
 MENU_MY_DEPOSITS = "📝 واریزهای رزروشده من"
+MENU_RESALAT = "🏦 وام بانک رسالت"
+MENU_LOAN_SELL = "💵 فروش وام"
+MENU_LOAN_BUY = "💰 خرید وام"
+MENU_LOAN_SELL_LIST = "📋 لیست انتظار فروش"
+MENU_LOAN_BUY_LIST = "📋 لیست انتظار خرید"
+MENU_MY_LOAN_REQUESTS = "📝 درخواست‌های من"
+MENU_LOAN_REGISTER_ACCOUNT = "🧾 ثبت حساب"
+MENU_LOAN_RULES = "📖 قوانین و آموزش"
 
 EMOJI_MONEY = "💰"
 EMOJI_RECEIPT = "🧾"
@@ -61,6 +69,40 @@ TRANSACTION_STATUS_FA = {
     "approved": "تایید شده ✅",
     "rejected": "رد شده ❌",
 }
+
+def loans_bank_menu_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": MENU_RESALAT}],
+            [{"text": "🔙 بازگشت"}],
+        ],
+        "resize_keyboard": True,
+    }
+
+
+def loan_product_menu_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": MENU_LOAN_SELL}, {"text": MENU_LOAN_BUY}],
+            [{"text": MENU_LOAN_SELL_LIST}, {"text": MENU_LOAN_BUY_LIST}],
+            [{"text": MENU_MY_LOAN_REQUESTS}, {"text": MENU_LOAN_REGISTER_ACCOUNT}],
+            [{"text": MENU_LOAN_RULES}],
+            [{"text": "🔙 بازگشت"}],
+        ],
+        "resize_keyboard": True,
+    }
+
+
+def loan_amount_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": "5 میلیون"}, {"text": "10 میلیون"}],
+            [{"text": "20 میلیون"}, {"text": "50 میلیون"}],
+            [{"text": "100 میلیون"}, {"text": "مقدار آزاد"}],
+            [{"text": "🔙 بازگشت"}],
+        ],
+        "resize_keyboard": True,
+    }
 
 def format_transaction_datetime(created_at_str: str) -> str:
     created_at = datetime.fromisoformat(created_at_str)
@@ -508,7 +550,15 @@ async def handle_message(message: dict) -> None:
                     )
 
         elif text == MENU_LOANS:
-            await bale_client.send_message(chat_id, "بخش وام‌های بانکی (به‌زودی تکمیل می‌شود)")
+            await bale_client.send_message(
+                chat_id, "بانک مورد نظر را انتخاب کنید:", reply_markup=loans_bank_menu_keyboard()
+            )
+
+        elif text == MENU_RESALAT:
+            await bale_client.send_message(
+                chat_id, "وام بانک رسالت - یکی از گزینه‌ها را انتخاب کنید:",
+                reply_markup=loan_product_menu_keyboard(),
+            )
         elif text == MENU_CLUB_SERVICES:
             await bale_client.send_message(chat_id, "بخش خدمات باشگاه آگاه (به‌زودی تکمیل می‌شود)")
         elif text == MENU_STOCKS:
