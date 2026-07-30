@@ -70,6 +70,7 @@ class CoreApiClient:
         receipt_bale_file_id: str,
         transfer_method: str | None = None,
         bale_channel_message_id: int | None = None,
+        withdrawal_request_id: int | None = None,
     ) -> dict:
         response = await self._client.post(
             "/api/v1/wallet/deposit/submit",
@@ -79,6 +80,7 @@ class CoreApiClient:
                 "receipt_bale_file_id": receipt_bale_file_id,
                 "transfer_method": transfer_method,
                 "bale_channel_message_id": bale_channel_message_id,
+                "withdrawal_request_id": withdrawal_request_id,
             },
         )
         response.raise_for_status()
@@ -104,11 +106,13 @@ class CoreApiClient:
         response.raise_for_status()
         return response.json()
 
-    async def submit_withdrawal(self, bale_user_id: int, bank_account_id: int, amount: float) -> dict:
+    async def submit_withdrawal(self, bale_user_id: int, bank_account_id: int, amount: float) -> dict | None:
         response = await self._client.post(
             "/api/v1/withdrawal/submit",
             params={"bale_user_id": bale_user_id, "bank_account_id": bank_account_id, "amount": amount},
         )
+        if response.status_code == 400:
+            return None
         response.raise_for_status()
         return response.json()
 
