@@ -33,6 +33,9 @@ MENU_MORE = "⚙️ گزینه‌های بیشتر"
 MENU_BACK = "🔙 بازگشت"
 MENU_DEPOSIT = "💳 واریز وجه"
 MENU_TRANSACTIONS = "📜 تاریخچه تراکنش‌ها"
+MENU_WITHDRAWAL = "🏧 برداشت وجه"
+MENU_MY_ACCOUNTS = "🏦 حساب‌های بانکی من"
+MENU_ADD_ACCOUNT = "➕ ثبت حساب جدید"
 
 EMOJI_MONEY = "💰"
 EMOJI_RECEIPT = "🧾"
@@ -137,6 +140,28 @@ def transfer_method_keyboard() -> dict:
         ],
         "resize_keyboard": True,
     }
+
+def wallet_submenu_keyboard() -> dict:
+    return {
+        "keyboard": [
+            [{"text": MENU_DEPOSIT}, {"text": MENU_WITHDRAWAL}],
+            [{"text": MENU_TRANSACTIONS}, {"text": MENU_MY_ACCOUNTS}],
+            [{"text": "🔙 بازگشت"}],
+        ],
+        "resize_keyboard": True,
+    }
+
+
+def bank_accounts_menu_keyboard(accounts: list[dict]) -> dict:
+    keyboard = []
+    for acc in accounts:
+        label = f"💳 {acc['bank_name']} - {acc['account_holder_name']}"
+        keyboard.append([{"text": label}])
+    keyboard.append([{"text": MENU_ADD_ACCOUNT}])
+    keyboard.append([{"text": "🔙 بازگشت"}])
+    return {"keyboard": keyboard, "resize_keyboard": True}
+
+
 @app.post("/webhook")
 async def handle_update(request: Request) -> dict:
     update = await request.json()
@@ -288,7 +313,32 @@ async def handle_message(message: dict) -> None:
                     await bale_client.send_message(chat_id, "لطفاً تصویر رسید واریز را ارسال کنید:")
                 else:
                     await bale_client.send_message(chat_id, "لطفاً یکی از روش‌های موجود را انتخاب کنید.")
+            elif state["step"] == "awaiting_sheba":
+                sheba = text.strip().upper().replace(" ", "")
+                if not sheba.startswith("IR"):
+                    sheba = "IR" + sheba
+                state["sheba_number"] = sheba
+                state["step"] = "awaiting_card_optional"
+                await bale_client.send_message(
+                    chat_id,
+                    "شماره کارت را وارد کنید (اختیاری - اگر ندارید عدد 0 را بفرستید):",
+                )
 
+            elif state["step"] == "awaiting_card_optional":
+                state["card_number"] = None if text.strip() == "0" else text.strip()
+                state["step"] = "awaiting_account_holder"
+                await bale_client.send_message(chat_id, "نام و نام خانوادگی صاحب حساب را وارد کنید:")
+
+            elif state["step"] == "awaiting_account_holder":
+                await core_api.submit_bank_account(
+                    user_id, state["sheba_number"], state["card_number"], text.strip()
+                )
+                del user_states[user_id]
+                await bale_client.send_message(
+                    chat_id,
+                    f"{EMOJI_SUCCESS} حساب بانکی شما ثبت شد و در انتظار تایید ادمین است.",
+                    reply_markup=wallet_submenu_keyboard(),
+                )
         elif text == MENU_LOANS:
             await bale_client.send_message(chat_id, "بخش وام‌های بانکی (به‌زودی تکمیل می‌شود)")
         elif text == MENU_CLUB_SERVICES:
@@ -333,6 +383,31 @@ async def handle_message(message: dict) -> None:
             await bale_client.send_message(chat_id, "بخش جستجوی سفارش (به‌زودی تکمیل می‌شود)")
         elif text == MENU_MORE:
             await bale_client.send_message(chat_id, "بخش گزینه‌های بیشتر (به‌زودی تکمیل می‌شود)")
+        elif text == MENU_MY_ACCOUNTS:
+            accounts = await core_api.get_user_bank_accounts(user_id)
+            if not accounts:
+                await bale_client.send_message(
+                    chat_id,
+                    "هنوز حساب بانکی تاییدشده‌ای ندارید.\nبرای ثبت حساب جدید، دکمه‌ی زیر را بزنید:",
+                    reply_markup={
+                        "keyboard": [[{"text": MENU_ADD_ACCOUNT}], [{"text": "🔙 بازگشت"}]],
+                        "resize_keyboard": True,
+                    },
+                )
+            else:
+                lines = ["🏦 حساب‌های بانکی تاییدشده‌ی شما:\n"]
+                for acc in accounts:
+                    lines.append(
+                        f"• {acc['bank_name']} - {acc['account_holder_name']}\n"
+                        f"  شبا: {acc['sheba_number']}"
+                    )
+                await bale_client.send_message(
+                    chat_id, "\n".join(lines), reply_markup=bank_accounts_menu_keyboard(accounts)
+                )
+
+        elif text == MENU_ADD_ACCOUNT:
+            user_states[user_id] = {"step": "awaiting_sheba"}
+            await bale_client.send_message(chat_id, "لطفاً شماره شبا خود را وارد کنید (بدون IR یا با آن):")   
         elif text == MENU_BACK:
             await bale_client.send_message(
                 chat_id, "به منوی اصلی برگشتی:", reply_markup=main_menu_keyboard()

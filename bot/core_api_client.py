@@ -83,3 +83,40 @@ class CoreApiClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def submit_bank_account(
+        self, bale_user_id: int, sheba_number: str, card_number: str | None, account_holder_name: str
+    ) -> dict:
+        response = await self._client.post(
+            "/api/v1/bank-accounts/submit",
+            params={"bale_user_id": bale_user_id},
+            json={
+                "sheba_number": sheba_number,
+                "card_number": card_number,
+                "account_holder_name": account_holder_name,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_user_bank_accounts(self, bale_user_id: int) -> list[dict]:
+        response = await self._client.get(f"/api/v1/bank-accounts/user/{bale_user_id}")
+        response.raise_for_status()
+        return response.json()
+
+    async def submit_withdrawal(self, bale_user_id: int, bank_account_id: int, amount: float) -> dict:
+        response = await self._client.post(
+            "/api/v1/withdrawal/submit",
+            params={"bale_user_id": bale_user_id, "bank_account_id": bank_account_id, "amount": amount},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def reserve_withdrawal_matches(self, amount: float) -> list[dict]:
+        response = await self._client.post(
+            "/api/v1/withdrawal/reserve", params={"amount": amount}
+        )
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+        return response.json()
