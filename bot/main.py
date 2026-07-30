@@ -193,6 +193,10 @@ def mask_phone(phone: str | None) -> str:
 
 
 async def handle_message(message: dict) -> None:
+     # پیام‌هایی که از کانال (echo پیام‌های خودمون) می‌آیند را نادیده بگیر
+    if message.get("chat", {}).get("type") == "channel" or "sender_chat" in message:
+        return
+    
     chat_id = message["chat"]["id"]
     from_user = message.get("from", {})
     text = message.get("text", "")
