@@ -63,3 +63,9 @@ async def update_phone_number(db: AsyncSession, bale_user_id: int, phone_number:
     await db.commit()
     await db.refresh(user)
     return user
+
+async def get_all_customers(db: AsyncSession) -> list[User]:
+    result = await db.execute(
+        select(User).where(User.role == UserRole.CUSTOMER).order_by(User.created_at.desc())
+    )
+    return list(result.scalars().all())

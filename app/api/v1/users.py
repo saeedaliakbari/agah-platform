@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.user import UserRead
-from app.services.user_service import get_or_create_bale_user, get_user_by_bale_id, update_phone_number
+from app.services.user_service import get_or_create_bale_user, get_user_by_bale_id, update_phone_number,get_all_customers
+from app.core.deps import require_admin
+from app.models.user import User as UserModel
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -45,3 +47,11 @@ async def update_bale_user_phone(
             detail="User not found",
         )
     return UserRead.model_validate(user)
+
+@router.get("/", response_model=list[UserRead])
+async def list_customers(
+    db: AsyncSession = Depends(get_db),
+    _admin: UserModel = Depends(require_admin),
+) -> list[UserRead]:
+    users = await get_all_customers(db)
+    return [UserRead.model_validate(u) for u in users]
