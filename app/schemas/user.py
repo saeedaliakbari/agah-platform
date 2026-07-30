@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.models.user import UserRole
-
+from app.models.verification_request import VerificationStatus
 
 class UserBase(BaseModel):
     full_name: str | None = None
@@ -23,6 +23,7 @@ class UserRead(UserBase):
     bale_user_id: int | None = None
     bale_username: str | None = None
     role: UserRole
+    verification_status: VerificationStatus
     is_active: bool
     created_at: datetime
 

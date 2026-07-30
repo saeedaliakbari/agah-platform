@@ -6,6 +6,7 @@ import Verification from './pages/Verification'
 import WalletDeposits from './pages/WalletDeposits'
 import RejectionReasons from './pages/RejectionReasons'
 import BankAccounts from './pages/BankAccounts'
+import Users from './pages/Users'
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth()
@@ -21,6 +22,7 @@ function App() {
       <Route path="/wallet-deposits" element={<ProtectedRoute><WalletDeposits /></ProtectedRoute>} />
       <Route path="/rejection-reasons" element={<ProtectedRoute><RejectionReasons /></ProtectedRoute>} />
       <Route path="/bank-accounts" element={<ProtectedRoute><BankAccounts /></ProtectedRoute>} />
+      <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
     </Routes>
   )
 }
