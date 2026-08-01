@@ -17,6 +17,16 @@ async def create_loan_account(
     phone_number: str,
     account_number: str,
 ) -> LoanAccount:
+    existing = await get_loan_account(db, user_id, bank_type)
+    if existing:
+        existing.national_id = national_id
+        existing.full_name = full_name
+        existing.phone_number = phone_number
+        existing.account_number = account_number
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
     account = LoanAccount(
         user_id=user_id,
         bank_type=bank_type,

@@ -1,4 +1,5 @@
 import os
+import re
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -69,6 +70,8 @@ TRANSACTION_STATUS_FA = {
     "approved": "تایید شده ✅",
     "rejected": "رد شده ❌",
 }
+def is_valid_resalat_account_number(account_number: str) -> bool:
+    return bool(re.match(r"^\d{2}\.\d{7,8}\.\d{1}$", account_number.strip()))
 
 def loans_bank_menu_keyboard() -> dict:
     return {
@@ -518,6 +521,48 @@ async def handle_message(message: dict) -> None:
                 else:
                     await bale_client.send_message(chat_id, "لطفاً یکی از روش‌های موجود را انتخاب کنید.")
 
+            elif state["step"] == "awaiting_loan_national_id":
+                state["national_id"] = text.strip()
+                state["step"] = "awaiting_loan_full_name"
+                await bale_client.send_message(chat_id, "نام و نام خانوادگی خود را وارد کنید:")
+
+            elif state["step"] == "awaiting_loan_full_name":
+                state["full_name"] = text.strip()
+                state["step"] = "awaiting_loan_phone"
+                await bale_client.send_message(chat_id, "شماره تلفن خود را وارد کنید:")
+
+            elif state["step"] == "awaiting_loan_phone":
+                state["phone_number"] = text.strip()
+                state["step"] = "awaiting_loan_account_number"
+                await bale_client.send_message(chat_id, "شماره حساب خود را وارد کنید:")
+
+            elif state["step"] == "awaiting_loan_account_number":
+                account_number = text.strip()
+                if state["bank_type"] == "resalat" and not is_valid_resalat_account_number(
+                    account_number
+                ):
+                    await bale_client.send_message(
+                        chat_id,
+                        "❌ فرمت شماره حساب رسالت صحیح نیست.\n"
+                        "فرمت صحیح: دو رقم.۷ یا ۸ رقم.یک رقم\n"
+                        "مثال: 10.8459008.1\n"
+                        "لطفاً دوباره وارد کنید:",
+                    )
+                else:
+                    await core_api.submit_loan_account(
+                        user_id,
+                        state["bank_type"],
+                        state["national_id"],
+                        state["full_name"],
+                        state["phone_number"],
+                        account_number,
+                    )
+                    del user_states[user_id]
+                    await bale_client.send_message(
+                        chat_id,
+                        f"{EMOJI_SUCCESS} حساب شما با موفقیت ثبت شد.",
+                        reply_markup=loan_product_menu_keyboard(),
+                    )
 
         elif text.startswith("✅ تکمیل ") or text.startswith("❌ لغو "):
             matches = user_reserved_matches.get(user_id, [])
@@ -678,10 +723,38 @@ async def handle_message(message: dict) -> None:
         elif text == MENU_ADD_ACCOUNT:
             user_states[user_id] = {"step": "awaiting_sheba"}
             await bale_client.send_message(chat_id, "لطفاً شماره شبا خود را وارد کنید (بدون IR یا با آن):")   
-        elif text == MENU_BACK:
+        elif text == MENU_LOAN_REGISTER_ACCOUNT:
+            existing = await core_api.get_loan_account(user_id, "resalat")
+            if existing:
+                await bale_client.send_message(
+                    chat_id,
+                    f"🧾 حساب ثبت‌شده‌ی شما:\n\n"
+                    f"🆔 کد ملی: {existing['national_id']}\n"
+                    f"👤 نام و نام خانوادگی: {existing['full_name']}\n"
+                    f"📞 شماره تلفن: {existing['phone_number']}\n"
+                    f"💳 شماره حساب: {existing['account_number']}",
+                    reply_markup={
+                        "keyboard": [
+                            [{"text": "✏️ ویرایش حساب"}],
+                            [{"text": "🔙 بازگشت به منوی وام"}],
+                        ],
+                        "resize_keyboard": True,
+                    },
+                )
+            else:
+                user_states[user_id] = {"step": "awaiting_loan_national_id", "bank_type": "resalat"}
+                await bale_client.send_message(chat_id, "کد ملی خود را وارد کنید:")
+
+        elif text == "✏️ ویرایش حساب":
+            user_states[user_id] = {"step": "awaiting_loan_national_id", "bank_type": "resalat"}
+            await bale_client.send_message(chat_id, "کد ملی جدید خود را وارد کنید:")
+
+        elif text == "🔙 بازگشت به منوی وام":
             await bale_client.send_message(
-                chat_id, "به منوی اصلی برگشتی:", reply_markup=main_menu_keyboard()
+                chat_id, "وام بانک رسالت - یکی از گزینه‌ها را انتخاب کنید:",
+                reply_markup=loan_product_menu_keyboard(),
             )
+        
     except Exception as exc:
         print(f"Failed to send message to {chat_id}: {type(exc).__name__}: {exc!r}")
 

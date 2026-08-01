@@ -152,3 +152,28 @@ class CoreApiClient:
         response = await self._client.get(f"/api/v1/users/bale/{bale_user_id}/referral")
         response.raise_for_status()
         return response.json()
+
+    async def submit_loan_account(
+        self, bale_user_id: int, bank_type: str, national_id: str,
+        full_name: str, phone_number: str, account_number: str,
+    ) -> dict:
+        response = await self._client.post(
+            "/api/v1/loans/account/submit",
+            params={"bale_user_id": bale_user_id},
+            json={
+                "bank_type": bank_type,
+                "national_id": national_id,
+                "full_name": full_name,
+                "phone_number": phone_number,
+                "account_number": account_number,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_loan_account(self, bale_user_id: int, bank_type: str) -> dict | None:
+        response = await self._client.get(f"/api/v1/loans/account/{bale_user_id}/{bank_type}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
