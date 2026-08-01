@@ -66,6 +66,7 @@ async def create_loan_request(
     action_type: LoanActionType,
     point_type: str,
     amount: float,
+    rate_per_million: float,
     recipient_is_self: bool = True,
     recipient_national_id: str | None = None,
     recipient_full_name: str | None = None,
@@ -76,7 +77,7 @@ async def create_loan_request(
     if not rate:
         return None
 
-    final_amount = (amount / 1_000_000) * float(rate.rate_per_million) + float(rate.commission)
+    final_amount = (amount / 1_000_000) * rate_per_million + float(rate.commission)
 
     request = LoanRequest(
         user_id=user_id,
@@ -85,7 +86,7 @@ async def create_loan_request(
         point_type=point_type,
         amount=amount,
         installment_months=rate.installment_months,
-        rate_per_million=rate.rate_per_million,
+        rate_per_million=rate_per_million,
         commission=rate.commission,
         final_amount=final_amount,
         recipient_is_self=recipient_is_self,
@@ -99,7 +100,6 @@ async def create_loan_request(
     await db.commit()
     await db.refresh(request)
     return request
-
 
 async def get_waiting_list(db: AsyncSession, bank_type: str, action_type: str) -> list[LoanRequest]:
     result = await db.execute(

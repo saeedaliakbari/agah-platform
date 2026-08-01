@@ -89,6 +89,7 @@ async def submit_loan_request(
         payload.action_type,
         payload.point_type,
         payload.amount,
+        payload.rate_per_million,
         payload.recipient_is_self,
         payload.recipient_national_id,
         payload.recipient_full_name,
@@ -98,7 +99,6 @@ async def submit_loan_request(
     if not request:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rate not configured")
     return LoanRequestRead.model_validate(request)
-
 
 @router.get("/waiting-list/{bank_type}/{action_type}", response_model=list[LoanRequestRead])
 async def waiting_list(

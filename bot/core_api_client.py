@@ -177,3 +177,33 @@ class CoreApiClient:
             return None
         response.raise_for_status()
         return response.json()
+
+    async def get_loan_rate(self, bank_type: str, action_type: str) -> dict:
+        response = await self._client.get(f"/api/v1/loans/rate/{bank_type}/{action_type}")
+        response.raise_for_status()
+        return response.json()
+
+    async def submit_loan_request(
+        self, bale_user_id: int, bank_type: str, action_type: str, point_type: str,
+        amount: float, rate_per_million: float, recipient_is_self: bool = True,
+        recipient_national_id: str | None = None, recipient_full_name: str | None = None,
+        recipient_phone_number: str | None = None, recipient_account_number: str | None = None,
+    ) -> dict:
+        response = await self._client.post(
+            "/api/v1/loans/request/submit",
+            params={"bale_user_id": bale_user_id},
+            json={
+                "bank_type": bank_type,
+                "action_type": action_type,
+                "point_type": point_type,
+                "amount": amount,
+                "rate_per_million": rate_per_million,
+                "recipient_is_self": recipient_is_self,
+                "recipient_national_id": recipient_national_id,
+                "recipient_full_name": recipient_full_name,
+                "recipient_phone_number": recipient_phone_number,
+                "recipient_account_number": recipient_account_number,
+            },
+        )
+        response.raise_for_status()
+        return response.json()

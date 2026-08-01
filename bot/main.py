@@ -70,6 +70,13 @@ TRANSACTION_STATUS_FA = {
     "approved": "تایید شده ✅",
     "rejected": "رد شده ❌",
 }
+
+LOAN_HELP_TEXT = (
+    "در صورتی که امتیاز وام شما حقوقی هست دکمه امتیاز حقوقی را بزنید.\n"
+    "امتیاز حقوقی از سایت پیشخوان رسالت قابل انتقال می‌باشد.\n"
+    "دقت نمایید امتیاز حقوقی به صورت ۱۲ ماهه منتقل شود."
+)
+
 def is_valid_resalat_account_number(account_number: str) -> bool:
     return bool(re.match(r"^\d{2}\.\d{7,8}\.\d{1}$", account_number.strip()))
 
@@ -236,9 +243,75 @@ def mask_phone(phone: str | None) -> str:
     return f"{normalized[-4:]}***{normalized[:4]}"
 
 
+async def proceed_after_loan_amount(user_id: int, chat_id: int, state: dict) -> None:
+    if state["action_type"] == "buy":
+        account = await core_api.get_loan_account(user_id, state["bank_type"])
+        state["step"] = "awaiting_loan_recipient_choice"
+        await bale_client.send_message(
+            chat_id,
+            f"🤔 آیا وام برای حساب شما منتقل شود یا شخص دیگر؟\n\n"
+            f"🆔 کد ملی: {account['national_id']}\n"
+            f"👤 نام و نام خانوادگی: {account['full_name']}\n"
+            f"📞 شماره تلفن: {account['phone_number']}\n"
+            f"💳 شماره حساب: {account['account_number']}",
+            reply_markup={
+                "keyboard": [
+                    [{"text": "خودم"}, {"text": "شخص دیگر"}],
+                    [{"text": "🔙 بازگشت"}],
+                ],
+                "resize_keyboard": True,
+            },
+        )
+    else:
+        state["step"] = "awaiting_loan_price"
+        await bale_client.send_message(chat_id, "💰 قیمت هر میلیون تومان وام را وارد کنید:")
 
 
 
+async def show_loan_receipt(user_id: int, chat_id: int, state: dict) -> None:
+    rate = await core_api.get_loan_rate(state["bank_type"], state["action_type"])
+    amount = state["amount"]
+    price_per_million = state["rate_per_million"]
+    final_amount = (amount / 1_000_000) * price_per_million + float(rate["commission"])
+
+    state["final_amount"] = final_amount
+    state["installment_months"] = rate["installment_months"]
+    state["commission"] = rate["commission"]
+    state["step"] = "awaiting_loan_point_type"
+
+    action_label = "فروش" if state["action_type"] == "sell" else "خرید"
+    commission_emoji_label = (
+        "💸 کارمزد فروش" if state["action_type"] == "sell" else "💸 کارمزد خرید"
+    )
+    note = (
+        "ℹ️ توجه: مبلغ نهایی بعد از فروش وام برای شما واریز خواهد شد.\n"
+        "کارمزد کسر شده بابت هزینه‌های سرور بات و حق نظارت می‌باشد."
+        if state["action_type"] == "sell"
+        else "ℹ️ توجه: کارمزد اضافه شده بابت هزینه‌های سرور بات و حق نظارت می‌باشد."
+    )
+
+    receipt_text = (
+        f"🧾 رسید مشتری #{action_label}_وام_رسالت\n\n"
+        f"💰 ارزش: {amount / 1_000_000:.2f} میلیون تومان\n"
+        f"📅 اقساط: #{rate['installment_months']}_ماه\n"
+        f"💵 هر میلیون: {price_per_million:,.0f} تومان\n"
+        f"{commission_emoji_label}: {float(rate['commission']):,.0f} تومان\n"
+        f"✅ مبلغ نهایی: {final_amount:,.0f} تومان\n\n"
+        f"{note}"
+    )
+
+    await bale_client.send_message(
+        chat_id,
+        receipt_text,
+        reply_markup={
+            "keyboard": [
+                [{"text": "📖 راهنما"}],
+                [{"text": "👤 امتیاز حقیقی"}, {"text": "🏢 امتیاز حقوقی"}],
+                [{"text": "❌ لغو"}, {"text": "✅ تایید"}],
+            ],
+            "resize_keyboard": True,
+        },
+    )
 async def handle_message(message: dict) -> None:
      # پیام‌هایی که از کانال (echo پیام‌های خودمون) می‌آیند را نادیده بگیر
     if message.get("chat", {}).get("type") == "channel" or "sender_chat" in message:
@@ -563,7 +636,82 @@ async def handle_message(message: dict) -> None:
                         f"{EMOJI_SUCCESS} حساب شما با موفقیت ثبت شد.",
                         reply_markup=loan_product_menu_keyboard(),
                     )
+            elif state["step"] == "awaiting_loan_amount":
+                amount_map = {
+                    "5 میلیون": 5_000_000,
+                    "10 میلیون": 10_000_000,
+                    "20 میلیون": 20_000_000,
+                    "50 میلیون": 50_000_000,
+                    "100 میلیون": 100_000_000,
+                }
+                if text == "مقدار آزاد":
+                    state["step"] = "awaiting_custom_loan_amount"
+                    await bale_client.send_message(chat_id, "مبلغ وام را به تومان وارد کنید:")
+                elif text in amount_map:
+                    state["amount"] = amount_map[text]
+                    await proceed_after_loan_amount(user_id, chat_id, state)
+                else:
+                    await bale_client.send_message(chat_id, "لطفاً یکی از گزینه‌های موجود را انتخاب کنید.")
 
+            elif state["step"] == "awaiting_custom_loan_amount":
+                try:
+                    amount = float(text.replace(",", "").strip())
+                    if amount <= 0:
+                        raise ValueError
+                except ValueError:
+                    await bale_client.send_message(chat_id, "لطفاً یک عدد معتبر وارد کنید.")
+                else:
+                    state["amount"] = amount
+                    await proceed_after_loan_amount(user_id, chat_id, state)
+
+            elif state["step"] == "awaiting_loan_point_type":
+                if text == "📖 راهنما":
+                    await bale_client.send_message(chat_id, LOAN_HELP_TEXT)
+                elif text in ("👤 امتیاز حقیقی", "🏢 امتیاز حقوقی"):
+                    state["point_type"] = "real" if text == "👤 امتیاز حقیقی" else "legal"
+                    await bale_client.send_message(chat_id, f"✅ {text} انتخاب شد.")
+                elif text == "❌ لغو":
+                    del user_states[user_id]
+                    await bale_client.send_message(
+                        chat_id, "درخواست لغو شد.", reply_markup=loan_product_menu_keyboard()
+                    )
+                elif text == "✅ تایید":
+                    if "point_type" not in state:
+                        await bale_client.send_message(
+                            chat_id, "لطفاً ابتدا نوع امتیاز (حقیقی یا حقوقی) را انتخاب کنید."
+                        )
+                    else:
+                        await core_api.submit_loan_request(
+                            user_id,
+                            state["bank_type"],
+                            state["action_type"],
+                            state["point_type"],
+                            state["amount"],
+                            state["rate_per_million"],
+                            state.get("recipient_is_self", True),
+                            state.get("recipient_national_id"),
+                            state.get("recipient_full_name"),
+                            state.get("recipient_phone_number"),
+                            state.get("recipient_account_number"),
+                        )
+                        del user_states[user_id]
+                        await bale_client.send_message(
+                            chat_id,
+                            f"{EMOJI_SUCCESS} درخواست شما با موفقیت ثبت شد و در لیست انتظار قرار گرفت.",
+                            reply_markup=loan_product_menu_keyboard(),
+                        )
+                else:
+                    await bale_client.send_message(chat_id, "لطفاً یکی از گزینه‌های موجود را انتخاب کنید.")
+            elif state["step"] == "awaiting_loan_price":
+                try:
+                    price = float(text.replace(",", "").strip())
+                    if price <= 0:
+                        raise ValueError
+                except ValueError:
+                    await bale_client.send_message(chat_id, "لطفاً یک عدد معتبر وارد کنید.")
+                else:
+                    state["rate_per_million"] = price
+                    await show_loan_receipt(user_id, chat_id, state)
         elif text.startswith("✅ تکمیل ") or text.startswith("❌ لغو "):
             matches = user_reserved_matches.get(user_id, [])
             try:
@@ -754,6 +902,23 @@ async def handle_message(message: dict) -> None:
                 chat_id, "وام بانک رسالت - یکی از گزینه‌ها را انتخاب کنید:",
                 reply_markup=loan_product_menu_keyboard(),
             )
+        elif text == MENU_LOAN_SELL:
+            account = await core_api.get_loan_account(user_id, "resalat")
+            if not account:
+                await bale_client.send_message(
+                    chat_id,
+                    "برای فروش وام، ابتدا باید حساب خود را ثبت کنید.",
+                    reply_markup=loan_product_menu_keyboard(),
+                )
+            else:
+                user_states[user_id] = {
+                    "step": "awaiting_loan_amount",
+                    "bank_type": "resalat",
+                    "action_type": "sell",
+                }
+                await bale_client.send_message(
+                    chat_id, "مبلغ وام را انتخاب کنید:", reply_markup=loan_amount_keyboard()
+                )
         
     except Exception as exc:
         print(f"Failed to send message to {chat_id}: {type(exc).__name__}: {exc!r}")

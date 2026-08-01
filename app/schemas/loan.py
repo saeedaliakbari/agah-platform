@@ -39,12 +39,12 @@ class LoanRequestCreate(BaseModel):
     action_type: LoanActionType
     point_type: LoanPointType
     amount: float
+    rate_per_million: float
     recipient_is_self: bool = True
     recipient_national_id: str | None = None
     recipient_full_name: str | None = None
     recipient_phone_number: str | None = None
     recipient_account_number: str | None = None
-
 
 class LoanRequestRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
