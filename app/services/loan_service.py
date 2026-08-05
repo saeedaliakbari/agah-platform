@@ -6,7 +6,58 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.loan_account import LoanAccount
 from app.models.loan_rate import LoanRate
 from app.models.loan_request import LoanActionType, LoanRequest, LoanRequestStatus
+STANDARD_LOAN_AMOUNTS = {
+    5_000_000: "پنج_میلیون",
+    10_000_000: "ده_میلیون",
+    20_000_000: "بیست_میلیون",
+    50_000_000: "پنجاه_میلیون",
+    100_000_000: "یکصد_میلیون",
+}
 
+
+async def get_headline_prices(db: AsyncSession, bank_type: str, action_type: str) -> list[dict]:
+    """برای هر مبلغ استاندارد، بهترین قیمت (کمترین برای فروش، بیشترین برای خرید) را برمی‌گرداند."""
+    requests = await get_waiting_list(db, bank_type, action_type)
+
+    headlines = []
+    for amount, label in STANDARD_LOAN_AMOUNTS.items():
+        matching = [r for r in requests if float(r.amount) == amount]
+        if not matching:
+            continue
+
+        if action_type == "sell":
+            best = min(matching, key=lambda r: float(r.rate_per_million))
+        else:
+            best = max(matching, key=lambda r: float(r.rate_per_million))
+
+        rate = float(best.rate_per_million)
+        total = (amount / 1_000_000) * rate
+        headlines.append({"label": label, "rate_per_million": rate, "total": total})
+
+    headlines.sort(key=lambda h: h["rate_per_million"])
+    return headlines
+
+
+async def get_bucket_counts(db: AsyncSession, bank_type: str, action_type: str) -> dict:
+    """تعداد درخواست‌های در انتظار برای هر باکت مبلغ (استاندارد + آزاد، آزاد به تفکیک نوع امتیاز)."""
+    requests = await get_waiting_list(db, bank_type, action_type)
+
+    counts = {label: 0 for label in STANDARD_LOAN_AMOUNTS.values()}
+    custom_real = 0
+    custom_legal = 0
+
+    for r in requests:
+        amount = float(r.amount)
+        if amount in STANDARD_LOAN_AMOUNTS:
+            counts[STANDARD_LOAN_AMOUNTS[amount]] += 1
+        elif r.point_type.value == "real":
+            custom_real += 1
+        else:
+            custom_legal += 1
+
+    counts["مقدار_آزاد"] = custom_real
+    counts["مقدار_آزاد_حقوقی"] = custom_legal
+    return counts
 
 async def create_loan_account(
     db: AsyncSession,
