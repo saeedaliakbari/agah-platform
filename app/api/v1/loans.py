@@ -20,6 +20,8 @@ from app.services.loan_service import (
     get_loan_rate,
     get_user_loan_requests,
     get_waiting_list,
+    get_bucket_counts,
+    get_headline_prices
 )
 from app.services.user_service import get_user_by_bale_id
 
@@ -148,3 +150,16 @@ async def cancel_request(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot cancel this request"
         )
     return LoanRequestRead.model_validate(request)
+
+@router.get("/headline-prices/{bank_type}/{action_type}")
+async def headline_prices(
+    bank_type: str, action_type: str, db: AsyncSession = Depends(get_db)
+) -> list[dict]:
+    return await get_headline_prices(db, bank_type, action_type)
+
+
+@router.get("/bucket-counts/{bank_type}/{action_type}")
+async def bucket_counts(
+    bank_type: str, action_type: str, db: AsyncSession = Depends(get_db)
+) -> dict:
+    return await get_bucket_counts(db, bank_type, action_type)
